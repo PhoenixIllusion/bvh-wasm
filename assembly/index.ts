@@ -58,10 +58,7 @@ class VectorMath {
 const SIZE_TRI = 48;
 const SIZE_BVH = 44;
 
-const NUM_TRI_OFFSET = 12;
-const TRI_HIT_OUT = 16;
 const STACK_OFFSET = 20;
-const CENTEROID_OFFSET = 24;
 
 
 @unmanaged
@@ -70,57 +67,42 @@ class _BVHNode {
 }
 
 @unmanaged
-class _Ret {
-  triangles: StaticArray<f32>;
-  triIndex: StaticArray<u32>;
-  bvh: StaticArray<_BVHNode>;
-  stack: StaticArray<u32>;
-  centeroid: StaticArray<v128>;
-  constructor(triangles: u32){
-    this.triangles = new StaticArray(triangles * SIZE_TRI)
-    this.triIndex = new StaticArray(triangles);
-    this.bvh = new StaticArray<_BVHNode>(2* triangles);
-    this.stack = new StaticArray(64);
-    this.centeroid = [ f32x4(0,0,0,0), f32x4(0,0,0,0)];
-  }
+class Ret {
+  triangles: u32;
+  triIndex: u32
+  bvh: u32;
+  stack: u32;
+  centeroid: u32;
+  hit: u32;
+  count: u32;
 }
 
-export function Create(numTriangles: u32): u32 {
-  const triangles = heap.alloc(SIZE_TRI * numTriangles) as u32;
-  const triIndex = heap.alloc(4 * numTriangles) as u32;
-  const bvh = heap.alloc(SIZE_BVH * 2 * numTriangles) as u32;
-  const stack = heap.alloc(4 * 64) as u32;
-  const centeroid = heap.alloc(32) as u32;
-  const ret = heap.alloc(3 * 4 + 32) as u32;
+export function Create(numTriangles: u32): Ret {
+  const ret = new Ret();
+  ret.triangles = heap.alloc(SIZE_TRI * numTriangles) as u32;
+  ret.triIndex = heap.alloc(4 * numTriangles) as u32;
+  ret.bvh = heap.alloc(SIZE_BVH * 2 * numTriangles) as u32;
+  ret.stack = heap.alloc(4 * 64) as u32;
+  ret.centeroid = heap.alloc(32) as u32;
+  ret.count = numTriangles;
 
   for(let i: u32 = 0; i < numTriangles; i++) {
-    store<u32>(triIndex + i * 4, triangles + i * SIZE_TRI);
+    store<u32>(ret.triIndex + i * 4, ret.triangles + i * SIZE_TRI);
   }
-  store<u32>(ret, triangles);
-  store<u32>(ret + 4, triIndex);
-  store<u32>(ret + 2 * 4, bvh);
-  store<u32>(ret + NUM_TRI_OFFSET, numTriangles);
-  store<u32>(ret + STACK_OFFSET, stack);
-  store<u32>(ret + CENTEROID_OFFSET, centeroid);
 
-  const x = new _Ret(numTriangles);
   return ret;
 }
-export function Destroy(ptr: u32): void {
-  const triangles = load<u32>(ptr);
-  const triIndex = load<u32>(ptr + 4);
-  const bvh = load<u32>(ptr + 2 * 4);
-  const stack = load<u32>(ptr + STACK_OFFSET);
-  heap.free(triangles);
-  heap.free(triIndex);
-  heap.free(bvh);
-  heap.free(stack);
-  heap.free(ptr);
+export function Destroy(ptr: Ret): void {
+  heap.free(ptr.triangles);
+  heap.free(ptr.triIndex);
+  heap.free(ptr.bvh);
+  heap.free(ptr.stack);
+  heap.free(u32(ptr));
 }
 
 
 
-function IntersectTri(rayO: v128, rayD: v128, rayT: f32, tri: u32, out_tri: u32): f32 {
+function IntersectTri(rayO: v128, rayD: v128, rayT: f32, tri: u32, ret: Ret): f32 {
   const edge1 = v128.sub<f32>(Tri.v1(tri), Tri.v0(tri));
   const edge2 = v128.sub<f32>(Tri.v2(tri), Tri.v0(tri));
   const h = VectorMath.cross_128(rayD, edge2);
@@ -136,14 +118,14 @@ function IntersectTri(rayO: v128, rayD: v128, rayT: f32, tri: u32, out_tri: u32)
   const t = f * VectorMath.dot_128(edge2, q);
   if (t > 0.0001) {
     if (t < rayT) {
-      store<u32>(out_tri, tri);
+      ret.hit = tri;
       return t;
     }
   }
   return rayT;
 }
 
-export function test(out: usize, width: u32, height: u32, tris: u32, tri_count: u32,
+export function test_bvh(out: usize, width: u32, height: u32, ret: Ret,
   camX: f32, camY: f32, camZ: f32,
   p0x: f32, p0y: f32, p0z: f32,
   p1x: f32, p1y: f32, p1z: f32,
@@ -167,40 +149,7 @@ export function test(out: usize, width: u32, height: u32, tris: u32, tri_count: 
       let t: f32 = 1e30;
       const O = cam;
       const D = VectorMath.normalize_128(v128.sub<f32>(pixPos, O));
-      for (let i: u32 = 0; i < tri_count; i++) {
-        t = IntersectTri(O, D, t, tris + i * 48, out as u32);
-      }
-      const out_idx = x + y * width;
-      store<f32>(out + out_idx*4, t < 1e30 ? t : 0);
-    }
-  }
-}
-export function test_bvh(out: usize, width: u32, height: u32, bvh_ptr: u32,
-  camX: f32, camY: f32, camZ: f32,
-  p0x: f32, p0y: f32, p0z: f32,
-  p1x: f32, p1y: f32, p1z: f32,
-  p2x: f32, p2y: f32, p2z: f32): void {
-  const bvh = load<u32>(bvh_ptr + 8);
-  const cam = f32x4(camX, camY, camZ, 0);
-  const p0 = f32x4(p0x, p0y, p0z, 0);
-  const p1 = f32x4(p1x, p1y, p1z, 0);
-  const p2 = f32x4(p2x, p2y, p2z, 0);
-  for (let y: u32 = 0; y < height; y++) {
-    for (let x: u32 = 0; x < width; x++) {
-      const pixPos = v128.add<f32>(p0, v128.add<f32>(
-        v128.mul<f32>(
-          v128.sub<f32>(p1, p0),
-          v128.splat<f32>((x as f32) / (width as f32))
-        ),
-        v128.mul<f32>(
-          v128.sub<f32>(p2, p0),
-          v128.splat<f32>((y as f32) / (height as f32))
-        )));
-
-      let t: f32 = 1e30;
-      const O = cam;
-      const D = VectorMath.normalize_128(v128.sub<f32>(pixPos, O));
-      t = IntersectBVH_recurse(O, D, t, bvh, bvh_ptr + TRI_HIT_OUT, load<u32>(bvh_ptr + STACK_OFFSET));
+      t = IntersectBVH_recurse(O, D, t, ret.bvh, ret);
       const out_idx = x + y * width;
       store<f32>(out + out_idx*4, t < 1e30 ? t : 0);
     }
@@ -344,9 +293,8 @@ function IntersectAABB(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: v128
     return (_max >= _min && _min < rayT && _max > 0)? _min: 1e30;
 }
 
-function IntersectBVH_recurse(rayO: v128, rayD: v128, rayT: f32, node: u32, hit_store: u32, stack: u32): f32
+function IntersectBVH_recurse(rayO: v128, rayD: v128, rayT: f32, node: u32, ret: Ret): f32
 {
-
   const aabbMin = BVHNode.aabbMin(node);
   const aabbMax = BVHNode.aabbMax(node);
     if (IntersectAABB( rayO, rayD, rayT, aabbMin, aabbMax ) == 1e30) return rayT;
@@ -357,21 +305,23 @@ function IntersectBVH_recurse(rayO: v128, rayD: v128, rayT: f32, node: u32, hit_
         let triId = BVHNode.g_firstTriIdx(node);
         for (let i: u32 = 0; i < triCount; i++ ) {
           const tri = load<u32>(triId);
-          rayT = IntersectTri( rayO, rayD, rayT, tri, hit_store );
+          rayT = IntersectTri( rayO, rayD, rayT, tri, ret );
           triId += 4;
         }
     }
     else
     {
       const leftNode = BVHNode.g_leftNode(node);
-      rayT = IntersectBVH_recurse( rayO, rayD, rayT, leftNode, hit_store, stack );
-      rayT = IntersectBVH_recurse( rayO, rayD, rayT, leftNode + 44, hit_store, stack );
+      const rightNode = leftNode + 44;
+      rayT = IntersectBVH_recurse( rayO, rayD, rayT, leftNode, ret );
+      rayT = IntersectBVH_recurse( rayO, rayD, rayT, rightNode, ret );
     }
     return rayT;
 }
 
-function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: u32 , hit_store: u32, stack: u32): f32
+function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: u32, ret: Ret): f32
 {
+  const stack = ret.stack;
   let stackPtr = 0;
   while(1) {
     const triCount = BVHNode.g_triCount(node);
@@ -379,7 +329,7 @@ function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: u32 , hit_store: 
       let triId = BVHNode.g_firstTriIdx(node);
       for (let i: u32 = 0; i < triCount; i++ ) {
         const tri = load<u32>(triId);
-        rayT = IntersectTri( rayO, rayD, rayT, tri, hit_store);
+        rayT = IntersectTri( rayO, rayD, rayT, tri, ret);
         triId += 4;
       }
       if(stackPtr == 0) break; else {
@@ -411,21 +361,22 @@ function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: u32 , hit_store: 
   return rayT;
 }
 
-export function BuildBVH(holder_ptr: u32): void {
-  const tris = load<u32>(holder_ptr);
-  const triIdx = load<u32>(holder_ptr + 4);
-  const bvhNodes = load<u32>(holder_ptr + 8);
-  const count =  load<u32>(holder_ptr + 12);
-  const centeroid =  load<u32>(holder_ptr + CENTEROID_OFFSET);
-
+export function BuildBVH(holder: Ret): void {
+  const count = holder.count;
+  const triangles = holder.triangles;
   const centroid_divider = v128.splat<f32>(1/3);
-  for(let i:u32 = count-1; i>0;i--) {
-    move_Tri(tris + i * 4 * 9, tris + i * SIZE_TRI, centroid_divider);
+  for(let i:u32 = holder.count-1; i>0;i--) {
+    move_Tri(triangles + i * 4 * 9, triangles + i * SIZE_TRI, centroid_divider);
   }
-  move_Tri(tris, tris, centroid_divider);
-  BVHNode.s_leftNode(bvhNodes, bvhNodes);
-  BVHNode.s_firstTriIdx(bvhNodes, triIdx);
-  BVHNode.s_triCount(bvhNodes, count);
-  UpdateNodeBounds(bvhNodes, centeroid);
-  Subdivide(bvhNodes, bvhNodes + 44, centeroid);
+  move_Tri(triangles, triangles, centroid_divider);
+
+  const bvh = holder.bvh;
+  const triIndex = holder.triIndex;
+  BVHNode.s_leftNode(bvh, bvh);
+  BVHNode.s_firstTriIdx(bvh, triIndex);
+  BVHNode.s_triCount(bvh, count);
+
+  const centeroid = holder.centeroid;
+  UpdateNodeBounds(bvh, centeroid);
+  Subdivide(bvh, bvh + 44, centeroid);
 }

@@ -16,9 +16,8 @@ const run = async () => {
   const HEIGHT = 1200;
   const drawBuffer_ptr = alloc(1200*1200*4, 0);
 
-  const bvh_ptr = Create(tri_count);
-  const bvh = new Uint32Array(memory.buffer, bvh_ptr, 4);
-  const triangles = new Float32Array(memory.buffer, bvh[0], 9 * tri_count );
+  const bvh = Create(tri_count);
+  const triangles = new Float32Array(memory.buffer, bvh.triangles, 9 * tri_count );
   const drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, 1200*1200);
   drawBuffer.fill(0);
 
@@ -33,7 +32,7 @@ const run = async () => {
     }
   }
   perf('build bvh', () => {
-    BuildBVH(bvh_ptr);
+    BuildBVH(bvh);
   })
 
 
@@ -50,7 +49,7 @@ const run = async () => {
   const offset = [0,.5,0];
 
   perf('render',() => {
-    test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh_ptr,
+    test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh,
       0, 0, 15,
       -SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],
       SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],
