@@ -97,7 +97,7 @@ export function Destroy(ptr: Ret): void {
   heap.free(ptr.triIndex);
   heap.free(ptr.bvh);
   heap.free(ptr.stack);
-  heap.free(u32(ptr));
+  heap.free(changetype<u32>(ptr));
 }
 
 
@@ -149,13 +149,14 @@ export function test_bvh(out: usize, width: u32, height: u32, ret: Ret,
       let t: f32 = 1e30;
       const O = cam;
       const D = VectorMath.normalize_128(v128.sub<f32>(pixPos, O));
-      t = IntersectBVH_recurse(O, D, t, ret.bvh, ret);
+      t = IntersectBVH_recurse(O, D, t, changetype<BVHNode>(ret.bvh), ret);
       const out_idx = x + y * width;
       store<f32>(out + out_idx*4, t < 1e30 ? t : 0);
     }
   }
 }
 
+/*
 class AABB {
   static grow(i: u32, p: v128): void {
     const aabbMin = BVHNode.aabbMin(i);BVHNode.s_aabbMin(i,v128.min<f32>(p, aabbMin));
@@ -167,23 +168,21 @@ class AABB {
       AABB.grow(i, BVHNode.aabbMax(j));
     }
   }
-}
+}*/
 
+@unmanaged
 class BVHNode {
-  static s_aabbMin(i: u32, v: v128): void { v128.store(i, v) }
-  static aabbMin(i: u32): v128 { return v128.load(i) }
-  static aabbMin_p(i: u32, p: u8): f32 { return load<f32>(i+p*4) }
-  static s_aabbMax(i: u32, v: v128): void { v128.store(i, v, 16) }
-  static aabbMax(i: u32): v128 { return v128.load(i, 16) }
-  static s_leftNode(i: u32, v: u32): void { return store<u32>(i, v, 32) }
-  static g_leftNode(i: u32): u32 { return load<u32>(i, 32) }
-  static s_firstTriIdx(i: u32, v: u32): void { return store<u32>(i, v, 36) }
-  static g_firstTriIdx(i: u32): u32 { return load<u32>(i, 36) }
-  static s_triCount(i: u32, v: u32): void { return store<u32>(i, v, 40) }
-  static g_triCount(i: u32): u32 { return load<u32>(i, 40) }
+  aabbMin: v128;
+  aabbMax: v128;
+  leftNode: BVHNode;
+  firstTriIdx: u32;
+  triCount: u32;
+
+  aabbMin_p(i: u8):f32 { return load<f32>( changetype<u32>(this) + i * 4); }
 
   static NodeCost(i: u32, triCount: u32): f32 {
-    const e = v128.sub<f32>(BVHNode.aabbMax(i),BVHNode.aabbMin(i));
+    const node = changetype<BVHNode>(i);
+    const e = v128.sub<f32>(node.aabbMax,node.aabbMin);
     const e2 = v128.mul<f32>(v128.shuffle<f32>(e,e,1,2,0,0),e);
     return (VX(e2)+VY(e2)+VZ(e2)) * triCount;
   }
@@ -195,13 +194,13 @@ const MIN4 = (a: v128, b: v128, c: v128, d: v128): v128 => MIN(a, MIN(b, MIN(c, 
 const MAX = (a: v128,b: v128): v128 => v128.max<f32>(a,b);
 const MAX4 = (a: v128, b: v128, c: v128, d: v128): v128 => MAX(a, MAX(b, MAX(c, d)));
 
-function UpdateNodeBounds(node_ptr: u32, centroid: u32): void {
+function UpdateNodeBounds(node: BVHNode, centroid: u32): void {
 
 	let min4: v128 = v128.splat<f32>( 1e30 ), max4 = v128.splat<f32>( -1e30 );
 	let cmin4: v128 = v128.splat<f32>( 1e30 ), cmax4 = v128.splat<f32>(-1e30 );
 
-  let triId = BVHNode.g_firstTriIdx(node_ptr);
-  let count = BVHNode.g_triCount(node_ptr);
+  let triId = node.firstTriIdx;
+  let count = node.triCount;
   for (let i: u32 = 0; i < count; i++) {
     const tri = load<u32>(triId); triId += 4;
 		min4 = v128.min<f32>( min4, Tri.v0(tri) ), max4 = v128.max<f32>( max4, Tri.v0(tri) );
@@ -210,19 +209,19 @@ function UpdateNodeBounds(node_ptr: u32, centroid: u32): void {
 		cmin4 = v128.min<f32>( cmin4, Tri.c(tri) );
 		cmax4 = v128.max<f32>( cmax4, Tri.c(tri) );
   }
-  BVHNode.s_aabbMin(node_ptr, min4);
-  BVHNode.s_aabbMax(node_ptr, max4);
+  node.aabbMin = min4;
+  node.aabbMax = max4;
   v128.store(centroid, cmin4);
   v128.store(centroid, cmax4, 16);
 }
 
-function Subdivide(node: u32, nodesUsed: u32, centroid: u32): u32 {
-  if (BVHNode.g_triCount(node) <= 2)
+function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
+  if (node.triCount <= 2)
     return nodesUsed;
 
   // determine split axis and position
-  const aabbMin = BVHNode.aabbMin(node);
-  const extent = v128.sub<f32>(BVHNode.aabbMax(node), aabbMin);
+  const aabbMin = node.aabbMin;
+  const extent = v128.sub<f32>(node.aabbMax, aabbMin);
   let axis:u8 = 0;
   let extentY = VY(extent);
   let extentZ = VZ(extent);
@@ -230,11 +229,11 @@ function Subdivide(node: u32, nodesUsed: u32, centroid: u32): u32 {
 
   if (extentY > _extent) { axis = 1; _extent = extentY; }
   if (extentZ > _extent) { axis = 2; _extent = extentZ; }
-  const splitPos = BVHNode.aabbMin_p(node, axis) + _extent * 0.5;
+  const splitPos = node.aabbMin_p(axis) + _extent * 0.5;
 
   // in-place partition
-  const firstTriIdx = BVHNode.g_firstTriIdx(node);
-  const triCount = BVHNode.g_triCount(node);
+  const firstTriIdx = node.firstTriIdx;
+  const triCount = node.triCount
   let i = firstTriIdx;
   let j = i + (triCount - 1) * 4;
   while (i <= j) {
@@ -254,24 +253,24 @@ function Subdivide(node: u32, nodesUsed: u32, centroid: u32): u32 {
   const leftCount = (i - firstTriIdx) / 4;
   if (leftCount == 0 || leftCount == triCount) return nodesUsed;
   // create child nodes
-  const leftChildIdx = nodesUsed;nodesUsed += 44;
-  const rightChildIdx = nodesUsed;nodesUsed += 44;
+  const leftChild = changetype<BVHNode>(nodesUsed);nodesUsed += 44;
+  const rightChild = changetype<BVHNode>(nodesUsed);nodesUsed += 44;
 
-  BVHNode.s_firstTriIdx(leftChildIdx, firstTriIdx);
-  BVHNode.s_triCount(leftChildIdx, leftCount);
-  
-  BVHNode.s_firstTriIdx(rightChildIdx, i);
-  BVHNode.s_triCount(rightChildIdx, triCount - leftCount);
+  leftChild.firstTriIdx = firstTriIdx;
+  leftChild.triCount = leftCount;
 
-  BVHNode.s_leftNode(node, leftChildIdx);
-  BVHNode.s_triCount(node, 0);
+  rightChild.firstTriIdx = i;
+  rightChild.triCount = triCount - leftCount;
 
-  UpdateNodeBounds(leftChildIdx, centroid);
-  UpdateNodeBounds(rightChildIdx, centroid);
+  node.leftNode = leftChild;
+  node.triCount = 0;
+
+  UpdateNodeBounds(leftChild, centroid);
+  UpdateNodeBounds(rightChild, centroid);
 
   // recurse
-  nodesUsed = Subdivide(leftChildIdx, nodesUsed, centroid);
-  return Subdivide(rightChildIdx, nodesUsed, centroid);
+  nodesUsed = Subdivide(leftChild, nodesUsed, centroid);
+  return Subdivide(rightChild, nodesUsed, centroid);
 }
 
 function IntersectAABB(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: v128 ): f32 {
@@ -293,16 +292,15 @@ function IntersectAABB(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: v128
     return (_max >= _min && _min < rayT && _max > 0)? _min: 1e30;
 }
 
-function IntersectBVH_recurse(rayO: v128, rayD: v128, rayT: f32, node: u32, ret: Ret): f32
+function IntersectBVH_recurse(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret): f32
 {
-  const aabbMin = BVHNode.aabbMin(node);
-  const aabbMax = BVHNode.aabbMax(node);
+  const aabbMin = node.aabbMin;
+  const aabbMax = node.aabbMax;
     if (IntersectAABB( rayO, rayD, rayT, aabbMin, aabbMax ) == 1e30) return rayT;
-    const triCount = BVHNode.g_triCount(node);
+    const triCount = node.triCount;
     if (triCount > 0)
     {
-        const triCount = BVHNode.g_triCount(node);
-        let triId = BVHNode.g_firstTriIdx(node);
+        let triId = node.firstTriIdx;
         for (let i: u32 = 0; i < triCount; i++ ) {
           const tri = load<u32>(triId);
           rayT = IntersectTri( rayO, rayD, rayT, tri, ret );
@@ -311,50 +309,50 @@ function IntersectBVH_recurse(rayO: v128, rayD: v128, rayT: f32, node: u32, ret:
     }
     else
     {
-      const leftNode = BVHNode.g_leftNode(node);
-      const rightNode = leftNode + 44;
+      const leftNode = node.leftNode;
+      const rightNode = changetype<BVHNode>(changetype<u32>(leftNode) + 44);
       rayT = IntersectBVH_recurse( rayO, rayD, rayT, leftNode, ret );
       rayT = IntersectBVH_recurse( rayO, rayD, rayT, rightNode, ret );
     }
     return rayT;
 }
 
-function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: u32, ret: Ret): f32
+function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret): f32
 {
   const stack = ret.stack;
   let stackPtr = 0;
   while(1) {
-    const triCount = BVHNode.g_triCount(node);
+    const triCount = node.triCount;
     if (triCount > 0) {
-      let triId = BVHNode.g_firstTriIdx(node);
+      let triId = node.firstTriIdx;
       for (let i: u32 = 0; i < triCount; i++ ) {
         const tri = load<u32>(triId);
         rayT = IntersectTri( rayO, rayD, rayT, tri, ret);
         triId += 4;
       }
       if(stackPtr == 0) break; else {
-        node = load<u32>(stack + (--stackPtr)*4);
+        node = changetype<BVHNode>(load<u32>(stack + (--stackPtr)*4));
       }
     }
-    let child1 = BVHNode.g_leftNode(node);
-    let child2 = BVHNode.g_leftNode(node)+44;
-    let dist1 = IntersectAABB( rayO, rayD, rayT, BVHNode.aabbMin(child1), BVHNode.aabbMax(child1) );
-    let dist2 = IntersectAABB( rayO, rayD, rayT, BVHNode.aabbMin(child2), BVHNode.aabbMax(child2));
+    let child1 = node.leftNode;
+    let child2 = changetype<BVHNode>(changetype<u32>(node.leftNode) + 44);
+    let dist1 = IntersectAABB( rayO, rayD, rayT, child1.aabbMin, child1.aabbMax );
+    let dist2 = IntersectAABB( rayO, rayD, rayT, child2.aabbMin, child2.aabbMax);
     if(dist1 > dist2) { //swap
       let _t1: f32 = dist1; dist1 = dist2; dist2 = _t1;
-      let _t2: u32 = child1; child1 = child2; child2 = _t2;
+      let _t2: BVHNode = child1; child1 = child2; child2 = _t2;
     }
     if (dist1 == 1e30)
 		{
       if(stackPtr == 0) break; else {
-        node = load<u32>(stack + (--stackPtr)*4);
+        node = changetype<BVHNode>(load<u32>(stack + (--stackPtr)*4));
       }
 		}
 		else
 		{
 			node = child1;
 			if (dist2 != 1e30) {
-        store<u32>(stack + (stackPtr++)*4, child2)
+        store<u32>(stack + (stackPtr++)*4, changetype<u32>(child2))
       }
 		}
   }
@@ -370,13 +368,13 @@ export function BuildBVH(holder: Ret): void {
   }
   move_Tri(triangles, triangles, centroid_divider);
 
-  const bvh = holder.bvh;
+  const bvh = changetype<BVHNode>(holder.bvh);
   const triIndex = holder.triIndex;
-  BVHNode.s_leftNode(bvh, bvh);
-  BVHNode.s_firstTriIdx(bvh, triIndex);
-  BVHNode.s_triCount(bvh, count);
+  bvh.leftNode = bvh;
+  bvh.firstTriIdx = triIndex;
+  bvh.triCount = count;
 
   const centeroid = holder.centeroid;
   UpdateNodeBounds(bvh, centeroid);
-  Subdivide(bvh, bvh + 44, centeroid);
+  Subdivide(bvh, (holder.bvh + 44), centeroid);
 }
