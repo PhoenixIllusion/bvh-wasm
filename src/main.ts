@@ -1,7 +1,5 @@
-import { test, memory, __new as alloc, Create, test_bvh, BuildBVH } from '../build/debug.js';
+import { memory, __new as alloc, Create, test_bvh, BuildBVH } from '../build/debug.js';
 import { OBJ } from 'webgl-obj-loader';
-
-const DEBUG = false;
 
 const perf = (label: string, func: ()=>void) => {
   const now = performance.now();
@@ -11,15 +9,17 @@ const perf = (label: string, func: ()=>void) => {
 
 const run = async () => {
 
-  const objStr = await fetch('lamp.obj').then(res => res.text());
+  const objStr = await fetch('bunny.obj').then(res => res.text());
   var mesh = new OBJ.Mesh(objStr);
-  const tri_count = Math.min(mesh.indices.length/3, 12000);
-  const drawBuffer_ptr = alloc(640*480*4, 0);
+  const tri_count = mesh.indices.length/3;
+  const WIDTH = 1200;
+  const HEIGHT = 1200;
+  const drawBuffer_ptr = alloc(1200*1200*4, 0);
 
   const bvh_ptr = Create(tri_count);
   const bvh = new Uint32Array(memory.buffer, bvh_ptr, 4);
   const triangles = new Float32Array(memory.buffer, bvh[0], 9 * tri_count );
-  const drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, 640*480);
+  const drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, 1200*1200);
   drawBuffer.fill(0);
 
   for(let i=0;i<tri_count;i++) {
@@ -36,24 +36,25 @@ const run = async () => {
     BuildBVH(bvh_ptr);
   })
 
-  const WIDTH = 600;
-  const HEIGHT = 600;
+
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   canvas.height = HEIGHT;
   canvas.width = WIDTH;
+  canvas.style.width = WIDTH+"px";
+  canvas.style.height = HEIGHT+"px";
   const ctx2d = canvas.getContext('2d')!;
 
   const imgData = ctx2d.createImageData(WIDTH,HEIGHT);
   
-  const SCALE = 12.1;
-  const offset = [0,4,0];
+  const SCALE = 1.2;
+  const offset = [0,.5,0];
 
   perf('render',() => {
     test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh[2],
       0, 0, 15,
-      -SCALE + offset[0], -SCALE + offset[1], -SCALE + offset[2],
       -SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],
-      SCALE+ offset[0], -SCALE + offset[1], -SCALE + offset[2]); //*/
+      SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],
+      -SCALE+ offset[0], -SCALE + offset[1], -SCALE + offset[2]); //*/
   })
   let outMin = Number.POSITIVE_INFINITY;
   let outMax = Number.NEGATIVE_INFINITY;
@@ -64,7 +65,7 @@ const run = async () => {
     }
   })
   let outD = outMax-outMin;
-  const t = (v) => (v-outMin)/outD;
+  const t = (v: number) => (v-outMin)/outD;
   for(let y=0;y<HEIGHT;y++) {
     for(let x=0;x<WIDTH;x++) {
       const buff_idx = (x + y*WIDTH);

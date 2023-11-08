@@ -1,0 +1,6 @@
+Iniital Code:
+* Bunny 
+res: 1200x1200
+tri_count: 69451
+build bvh 160
+render 5417.7
