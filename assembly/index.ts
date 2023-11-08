@@ -2,16 +2,29 @@ class Tri {
   static v0(i: u32): v128 { return v128.load(i); }
   static v1(i: u32): v128 { return v128.load(i, 12); }
   static v2(i: u32): v128 { return v128.load(i, 24); }
-  static c(i: u32): v128 { return v128.load(i, 32); }
-  static c_p(i: u32, p: u8): f32 { return load<f32>(i + p*4, 32); }
+  static c(i: u32): v128 { return v128.load(i, 36); }
+  static c_p(i: u32, p: u8): f32 { return load<f32>(i + p*4, 36); }
 }
-export function set_Tri(i: u32,
+function set_Tri(i: u32,
   v0x: f32, v0y: f32, v0z: f32,
   v1x: f32, v1y: f32, v1z: f32,
   v2x: f32, v2y: f32, v2z: f32): void {
   v128.store(i, f32x4(v0x, v0y, v0z, v1x))
   v128.store(i, f32x4(v1y, v1z, v2x, v2y), 16)
   v128.store(i, f32x4(v2z, (v0x + v1x + v2x) / 3, (v0y + v1y + v2y) / 3, (v0z + v1z + v2z) / 3), 32)
+}
+
+function move_Tri(i: u32, o: u32, div: v128): void {
+  const p0 = v128.load(i);
+  const p1 = v128.load(i+12);
+  const p2 = v128.load(i+24);
+  const c = v128.mul<f32>(v128.add<f32>(v128.add<f32>(p0,p1),p2), div);
+  v128.store(o, p0);
+  v128.store(o+12, p1);
+  v128.store(o+24, p2);
+  const _tmp = load<f32>(o+48);
+  v128.store(o+36, c);
+  store<f32>(o+48, _tmp);
 }
 
 const cross_128 = (a: v128, b: v128): v128 => {
@@ -24,14 +37,14 @@ const cross_128 = (a: v128, b: v128): v128 => {
       v128.shuffle<f32>(b, b, 1, 2, 0, 3))
   );
 }
-const dot_128 = (a: v128, b: v128): f32 => {
+function dot_128(a: v128, b: v128): f32 {
   const m = v128.mul<f32>(a, b);
   let res = v128.extract_lane<f32>(m, 0);
   res += v128.extract_lane<f32>(m, 1);
   res += v128.extract_lane<f32>(m, 2);
   return res;
 }
-const normalize_128 = (a: v128): v128 => {
+function normalize_128(a: v128): v128 {
   const sq = v128.mul<f32>(a, a);
   let res = v128.extract_lane<f32>(sq, 0);
   res += v128.extract_lane<f32>(sq, 1);
@@ -40,7 +53,35 @@ const normalize_128 = (a: v128): v128 => {
   return v128.div<f32>(a, v128.splat<f32>(div))
 }
 
-const IntersectTri = (rayO: v128, rayD: v128, rayT: f32, tri: u32): f32 => {
+const SIZE_TRI = 48;
+const SIZE_BVH = 44;
+
+export function Create(numTriangles: u32): u32 {
+  const triangles = heap.alloc(SIZE_TRI * numTriangles) as u32;
+  const triIndex = heap.alloc(4 * numTriangles) as u32;
+  const bvh = heap.alloc(SIZE_BVH * 2 * numTriangles) as u32;
+  const ret = heap.alloc(3 * 4 + 32) as u32;
+  for(let i: u32 = 0; i < numTriangles; i++) {
+    store<u32>(triIndex + i * 4, triangles + i * SIZE_TRI);
+  }
+  store<u32>(ret, triangles);
+  store<u32>(ret + 4, triIndex);
+  store<u32>(ret + 2 * 4, bvh);
+  store<u32>(ret + 2 * 4 + 4, numTriangles);
+  return ret;
+}
+export function Destroy(ptr: u32): void {
+  const triangles = load<u32>(ptr);
+  const triIndex = load<u32>(ptr + 4);
+  const bvh = load<usize>(ptr + 2 * 4);
+  heap.free(triangles);
+  heap.free(triIndex);
+  heap.free(bvh);
+  heap.free(ptr);
+}
+
+
+function IntersectTri(rayO: v128, rayD: v128, rayT: f32, tri: u32): f32 {
   const edge1 = v128.sub<f32>(Tri.v1(tri), Tri.v0(tri));
   const edge2 = v128.sub<f32>(Tri.v2(tri), Tri.v0(tri));
   const h = cross_128(rayD, edge2);
@@ -62,7 +103,7 @@ const IntersectTri = (rayO: v128, rayD: v128, rayT: f32, tri: u32): f32 => {
   return rayT;
 }
 
-export function test(out: usize, width: i32, height: i32, tris: u32, tri_count: u32,
+export function test(out: usize, width: u32, height: u32, tris: u32, tri_count: u32,
   camX: f32, camY: f32, camZ: f32,
   p0x: f32, p0y: f32, p0z: f32,
   p1x: f32, p1y: f32, p1z: f32,
@@ -71,8 +112,8 @@ export function test(out: usize, width: i32, height: i32, tris: u32, tri_count: 
   const p0 = f32x4(p0x, p0y, p0z, 0);
   const p1 = f32x4(p1x, p1y, p1z, 0);
   const p2 = f32x4(p2x, p2y, p2z, 0);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+  for (let y: u32 = 0; y < height; y++) {
+    for (let x: u32 = 0; x < width; x++) {
       const pixPos = v128.add<f32>(p0, v128.add<f32>(
         v128.mul<f32>(
           v128.sub<f32>(p1, p0),
@@ -95,10 +136,11 @@ export function test(out: usize, width: i32, height: i32, tris: u32, tri_count: 
   }
 }
 export function test_bvh(out: usize, width: u32, height: u32, bvh: u32,
+  camX: f32, camY: f32, camZ: f32,
   p0x: f32, p0y: f32, p0z: f32,
   p1x: f32, p1y: f32, p1z: f32,
   p2x: f32, p2y: f32, p2z: f32): void {
-  const cam = f32x4(0, 0, -18, 0);
+  const cam = f32x4(camX, camY, camZ, 0);
   const p0 = f32x4(p0x, p0y, p0z, 0);
   const p1 = f32x4(p1x, p1y, p1z, 0);
   const p2 = f32x4(p2x, p2y, p2z, 0);
@@ -119,20 +161,22 @@ export function test_bvh(out: usize, width: u32, height: u32, bvh: u32,
       const D = normalize_128(v128.sub<f32>(pixPos, O));
       t = IntersectBVH(O, D, t, bvh);
       const out_idx = x + y * width;
-      store<u8>(out + out_idx, t < 1e30 ? 1 : 0);
+      store<f32>(out + out_idx*4, t < 1e30 ? t : 0);
     }
   }
 }
 
 class BVHNode {
+  static s_aabbMin(i: u32, v: v128): void { v128.store(i, v) }
   static aabbMin(i: u32): v128 { return v128.load(i) }
   static aabbMin_p(i: u32, p: u8): f32 { return load<f32>(i+p*4) }
+  static s_aabbMax(i: u32, v: v128): void { v128.store(i, v, 16) }
   static aabbMax(i: u32): v128 { return v128.load(i, 16) }
   static s_leftNode(i: u32, v: u32): void { return store<u32>(i, v, 32) }
-  static g_leftNode(i: u32): u32 { return load<u32>(i, 24) }
+  static g_leftNode(i: u32): u32 { return load<u32>(i, 32) }
   static s_firstTriIdx(i: u32, v: u32): void { return store<u32>(i, v, 36) }
-  static g_firstTriIdx(i: u32): u32 { return load<u32>(i, 28) }
-  static s_triCount(i: u32, v: u32): void { return store<u32>(i, 40) }
+  static g_firstTriIdx(i: u32): u32 { return load<u32>(i, 36) }
+  static s_triCount(i: u32, v: u32): void { return store<u32>(i, v, 40) }
   static g_triCount(i: u32): u32 { return load<u32>(i, 40) }
 }
 
@@ -142,7 +186,7 @@ const MIN4 = (a: v128, b: v128, c: v128, d: v128): v128 => MIN(a, MIN(b, MIN(c, 
 const MAX = (a: v128,b: v128): v128 => v128.max<f32>(a,b);
 const MAX4 = (a: v128, b: v128, c: v128, d: v128): v128 => MAX(a, MAX(b, MAX(c, d)));
 
-const UpdateNodeBounds = (node_ptr: u32): void => {
+function UpdateNodeBounds(node_ptr: u32): void {
 
   let aabbMin = v128.splat<f32>(1e30);
   let aabbMax = v128.splat<f32>(-1e30);
@@ -154,14 +198,16 @@ const UpdateNodeBounds = (node_ptr: u32): void => {
     aabbMin = MIN4(Tri.v0(tri), Tri.v1(tri), Tri.v2(tri), aabbMin);
     aabbMax = MAX4(Tri.v0(tri), Tri.v1(tri), Tri.v2(tri), aabbMax);
   }
+  BVHNode.s_aabbMin(node_ptr, aabbMin);
+  BVHNode.s_aabbMax(node_ptr, aabbMax);
 }
 const VX = (a: v128): f32 => v128.extract_lane<f32>(a, 0);
 const VY = (a: v128): f32 => v128.extract_lane<f32>(a, 1);
 const VZ = (a: v128): f32 => v128.extract_lane<f32>(a, 2);
 
-function Subdivide(node: u32, triIdx: u32,nodesUsed: u32): void {
+function Subdivide(node: u32, nodesUsed: u32): u32 {
   if (BVHNode.g_triCount(node) <= 2)
-    return;
+    return nodesUsed;
 
   // determine split axis and position
   const aabbMin = BVHNode.aabbMin(node);
@@ -176,15 +222,17 @@ function Subdivide(node: u32, triIdx: u32,nodesUsed: u32): void {
   const splitPos = BVHNode.aabbMin_p(node, axis) + _extent * 0.5;
 
   // in-place partition
-  let i = BVHNode.g_firstTriIdx(node);
-  let j = i + (BVHNode.g_triCount(node) - 1) * 4;
+  const firstTriIdx = BVHNode.g_firstTriIdx(node);
+  const triCount = BVHNode.g_triCount(node);
+  let i = firstTriIdx;
+  let j = i + (triCount - 1) * 4;
   while (i <= j) {
     const tri_ptr = i;
     const tri = load<u32>(tri_ptr);
     if (Tri.c_p(tri, axis) < splitPos)
       i += 4;
     else {
-      const end_tri_ptr = (j * 4);
+      const end_tri_ptr = j;
       const end_tri = load<u32>(end_tri_ptr);
       store<u32>(tri_ptr, end_tri);
       store<u32>(end_tri_ptr, tri);
@@ -192,10 +240,8 @@ function Subdivide(node: u32, triIdx: u32,nodesUsed: u32): void {
     }
   }
   // abort split if one of the sides is empty
-  const firstTriIdx = BVHNode.g_firstTriIdx(node);
-  const triCount = BVHNode.g_triCount(node);
   const leftCount = (i - firstTriIdx) / 4;
-  if (leftCount == 0 || leftCount == triCount) return;
+  if (leftCount == 0 || leftCount == triCount) return nodesUsed;
   // create child nodes
   const leftChildIdx = nodesUsed;nodesUsed += 44;
   const rightChildIdx = nodesUsed;nodesUsed += 44;
@@ -203,8 +249,8 @@ function Subdivide(node: u32, triIdx: u32,nodesUsed: u32): void {
   BVHNode.s_firstTriIdx(leftChildIdx, firstTriIdx);
   BVHNode.s_triCount(leftChildIdx, leftCount);
   
-  BVHNode.s_firstTriIdx(leftChildIdx, i);
-  BVHNode.s_triCount(leftChildIdx, triCount - leftCount);
+  BVHNode.s_firstTriIdx(rightChildIdx, i);
+  BVHNode.s_triCount(rightChildIdx, triCount - leftCount);
 
   BVHNode.s_leftNode(node, leftChildIdx);
   BVHNode.s_triCount(node, 0);
@@ -213,8 +259,8 @@ function Subdivide(node: u32, triIdx: u32,nodesUsed: u32): void {
   UpdateNodeBounds(rightChildIdx);
 
   // recurse
-  Subdivide(leftChildIdx, triIdx, nodesUsed);
-  Subdivide(rightChildIdx, triIdx, nodesUsed);
+  nodesUsed = Subdivide(leftChildIdx, nodesUsed);
+  return Subdivide(rightChildIdx, nodesUsed);
 }
 
 function IntersectAABB(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: v128 ): boolean {
@@ -223,7 +269,7 @@ function IntersectAABB(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: v128
     const t2 = v128.div<f32>(v128.sub<f32>(bmax, rayO), rayD);
 
     const tmin = v128.min<f32>(t1,t2);
-    const tmax = v128.min<f32>(t1,t2);
+    const tmax = v128.max<f32>(t1,t2);
 
     let _min = VX(tmin);
     let _max = VX(tmax);
@@ -262,10 +308,20 @@ function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: u32 ): f32
     return rayT;
 }
 
-export function BuildBVH(bvhNodes: u32, triIdx: u32, count: u32): void {
+export function BuildBVH(holder_ptr: u32): void {
+  const tris = load<u32>(holder_ptr);
+  const triIdx = load<u32>(holder_ptr + 4);
+  const bvhNodes = load<u32>(holder_ptr + 8);
+  const count =  load<u32>(holder_ptr + 12);
+
+  const centroid_divider = v128.splat<f32>(1/3);
+  for(let i:u32 = count-1; i>0;i--) {
+    move_Tri(tris + i * 4 * 9, tris + i * SIZE_TRI, centroid_divider);
+  }
+  move_Tri(tris, tris, centroid_divider);
   BVHNode.s_leftNode(bvhNodes, bvhNodes);
   BVHNode.s_firstTriIdx(bvhNodes, triIdx);
   BVHNode.s_triCount(bvhNodes, count);
   UpdateNodeBounds(bvhNodes);
-  Subdivide(bvhNodes, triIdx, bvhNodes + 44);
+  Subdivide(bvhNodes, bvhNodes + 44);
 }
