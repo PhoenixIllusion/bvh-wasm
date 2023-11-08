@@ -50,7 +50,7 @@ const run = async () => {
   const offset = [0,.5,0];
 
   perf('render',() => {
-    test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh[2],
+    test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh_ptr,
       0, 0, 15,
       -SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],
       SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],
