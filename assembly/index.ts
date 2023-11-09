@@ -318,6 +318,7 @@ function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret
       for (let i: u32 = 0; i < triCount; i++ ) {
         const tri = load<u32>(triId);
         rayT = IntersectTri(rayO, rayD, rayT, tri, ret);
+        //if(rayT < 1e30) return rayT; // short circuit
         triId += sizeof<usize>();
       }
       if(stackPtr == 0) {

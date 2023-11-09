@@ -15,5 +15,5 @@ Dev:
 * Bunny Stack w/ binned
 Dev:
   res: 1200x1200
-  build bvh 131.4
-  render 709.5
+  build bvh 791.8
+  render 1905.8
