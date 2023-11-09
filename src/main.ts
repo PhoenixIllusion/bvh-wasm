@@ -14,8 +14,8 @@ const run = async () => {
   var mesh = new OBJ.Mesh(objStr);
   const tri_count = mesh.indices.length/3;
 
-  const WIDTH = 600;
-  const HEIGHT = 600;
+  const WIDTH = 1200;
+  const HEIGHT = 1200;
 
   const drawBuffer_ptr = alloc(WIDTH*HEIGHT*4, 0);
 
