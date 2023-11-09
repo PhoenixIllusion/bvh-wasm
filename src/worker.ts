@@ -1,4 +1,4 @@
-let setup: Promise<{bvh: number, out: number}>|undefined;
+let setup: Promise<{bvh: number, out: Float32Array, out_ref: number}>|undefined;
 
 async function _loadBVH() {
   const BVH = await import('./bvh');
@@ -14,6 +14,8 @@ self.onmessage = async (e) => {
   const {tri_count, buffer, render} = e.data as {tri_count: number, buffer: Float32Array, render: { p0: number[], p1: number[], p2: number[], origin: number[]}};
   if(tri_count != undefined) {
     setup = SetupBVH(buffer);
+    await setup;
+    postMessage(true);
   }
   if(render) {
     const vals = await setup!;

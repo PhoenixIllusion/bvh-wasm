@@ -29,22 +29,21 @@ const loadModel = async () => {
   }
 }
 
-
-function renderBuffer(drawBuffer: Float32Array, imgData: ImageData, ctx2d: CanvasRenderingContext2D, newData: { x: number, y: number, data: Float32Array}) {
-  let outMin = Number.POSITIVE_INFINITY;
-  let outMax = Number.NEGATIVE_INFINITY;
-  drawBuffer.forEach( v => {
+let outMin = Number.POSITIVE_INFINITY;
+let outMax = Number.NEGATIVE_INFINITY;
+function renderBuffer(drawBuffer: Float32Array, imgData: ImageData, ctx2d: CanvasRenderingContext2D, newData: { x: number, y: number, data: Float32Array}[]) {
+  newData.forEach(n => n.data.forEach( (v,i) => {
     if(v !== 0) {
       outMin = Math.min(outMin, v);
       outMax = Math.max(outMax, v);
+      const px = i % TILE_SIZE + n.x;
+      const py = 0xFFFF&(i / TILE_SIZE) + n.y;
+      if(px < WIDTH && py < HEIGHT) {
+        const buff_idx = (px + py*WIDTH);
+        drawBuffer[buff_idx] = v;
+      }
     }
-  })
-  newData.data.forEach( v => {
-    if(v !== 0) {
-      outMin = Math.min(outMin, v);
-      outMax = Math.max(outMax, v);
-    }
-  })
+  }));
   let outD = outMax-outMin;
   const t = (v: number) => (v-outMin)/outD;
   const png_out = new Uint16Array(WIDTH * HEIGHT);
@@ -52,20 +51,15 @@ function renderBuffer(drawBuffer: Float32Array, imgData: ImageData, ctx2d: Canva
   for(let y=0;y<HEIGHT;y++) {
     for(let x=0;x<WIDTH;x++) {
       const buff_idx = (x + y*WIDTH);
-      if(x >= newData.x && x < newData.x + TILE_SIZE) {
-        if(y >= newData.y && y < newData.y + TILE_SIZE) {
-          const n_buff_idx = (x-newData.x)+TILE_SIZE * (y-newData.y);
-          drawBuffer[buff_idx] = newData.data[n_buff_idx];
-        }
-      }
-      const idx = 4 * buff_idx;
       if(drawBuffer[buff_idx] > 0) {
         const c = drawBuffer[buff_idx];
         const v = (1.0-t(c));
+        const idx = buff_idx* 4;
         imgData.data[idx] = imgData.data[idx+1] = imgData.data[idx+2] = v*255;
         png_out[buff_idx] =  v*C_MAX;
         imgData.data[idx+3] = 255;
       } else {
+        const idx = buff_idx* 4;
         imgData.data[idx+3] = 255;
       }
     }
@@ -114,8 +108,8 @@ async function run() {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   canvas.height = HEIGHT;
   canvas.width = WIDTH;
-  canvas.style.width = WIDTH/2+"px";
-  canvas.style.height = HEIGHT/2+"px";
+  canvas.style.width = WIDTH/4+"px";
+  canvas.style.height = HEIGHT/4+"px";
   const ctx2d = canvas.getContext('2d')!;
 
   interface Request {render: {
@@ -133,8 +127,11 @@ async function run() {
   }
 
   const modelData = await loadModel();
+  const ready: Promise<void>[] = [];
   const queue = new WorkerQueue<Request, Response, Marker>(THREAD_COUNT, (worker) => {
     worker.postMessage(modelData);
+    ready.push(new Promise(resolve => worker.onmessage = () => resolve()));
+    
   })
 
   const drawBuffer = new Float32Array(WIDTH*HEIGHT);
@@ -168,7 +165,6 @@ async function run() {
 
     for(let x=0; x < WIDTH; x+= TILE_SIZE) {
       for(let y=0; y < HEIGHT; y+= TILE_SIZE) {
-
           queue.enqueue({render: {origin, ... genTriple(x*Q_X,y*Q_Y, Q_X*TILE_SIZE,Q_Y*TILE_SIZE)}}, {x, y});
       }
     }
@@ -178,14 +174,17 @@ async function run() {
       const { x, y } = marker;
       const { buffer } = response;
       res.push( {x, y, data: buffer});
+      //renderBuffer(drawBuffer, imgData, ctx2d, [{x,y,data: buffer}]);
     }
 
-    const now = performance.now();
+    let now = performance.now();
+    console.log('Awaiting Ready');
+    await Promise.all(ready);
+    console.log('Ready, rendering', performance.now()-now);
+    now = performance.now();
     await queue.process();
     console.log('Total Render', performance.now()-now);
-    res.forEach(data => {
-      renderBuffer(drawBuffer, imgData, ctx2d, data);
-    })
+    renderBuffer(drawBuffer, imgData, ctx2d, res);
     /*
       const blob = new Blob([encode({width: WIDTH, height: HEIGHT, data: png_out, depth: 16, channels: 1},{})]);
       const blobURL = URL.createObjectURL(blob);
