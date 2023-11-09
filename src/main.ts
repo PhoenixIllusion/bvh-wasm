@@ -1,5 +1,6 @@
 import { memory, __new as alloc, Create, test_bvh, BuildBVH } from '../build/debug.js';
 import { OBJ } from 'webgl-obj-loader';
+import { logBVH, renderBVH, setupCanvas } from './debug.js';
 
 const perf = (label: string, func: ()=>void) => {
   const now = performance.now();
@@ -12,8 +13,8 @@ const run = async () => {
   const objStr = await fetch('bunny.obj').then(res => res.text());
   var mesh = new OBJ.Mesh(objStr);
   const tri_count = mesh.indices.length/3;
-  const WIDTH = 1200;
-  const HEIGHT = 1200;
+  const WIDTH = 600;
+  const HEIGHT = 600;
   const drawBuffer_ptr = alloc(1200*1200*4, 0);
 
   const bvh = Create(tri_count);
@@ -45,10 +46,14 @@ const run = async () => {
 
   const imgData = ctx2d.createImageData(WIDTH,HEIGHT);
   
-  const SCALE = 1.2;
-  const offset = [0,.5,0];
+
+  setupCanvas(WIDTH,HEIGHT);
+  renderBVH(memory, bvh);
+  //logBVH(memory, bvh);
 
   perf('render',() => {
+    const SCALE = 1.2;
+    const offset = [0,.5,0];
     test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh,
       0, 0, 15,
       -SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2],

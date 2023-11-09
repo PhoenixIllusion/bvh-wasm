@@ -6,30 +6,29 @@ export const setupCanvas = (WIDTH: number, HEIGHT: number) => {
   const debugCanvasZ = document.getElementById('debugZ') as HTMLCanvasElement;
   debugCanvas = [];
   [ debugCanvasX, debugCanvasY, debugCanvasZ].forEach(canvas => {
-    canvas.width = WIDTH;
-    canvas.height = HEIGHT;
-    canvas.style.width = (WIDTH * 2)+'px'
-    canvas.style.height = (HEIGHT * 2)+'px'
+    canvas.width = WIDTH*2;
+    canvas.height = HEIGHT*2;
+    canvas.style.width = WIDTH*2 +'px'
+    canvas.style.height = HEIGHT*2 +'px'
     canvas.style.display = 'block';
     debugCanvas.push(canvas);
   })
 }
 
-export const renderBVH = (memory: WebAssembly.Memory, bvh: Uint32Array) => {
-  const tri_count = bvh[3];
+export const renderBVH = (memory: WebAssembly.Memory, bvh: {count: number, bvh: number}) => {
   const [debugCanvasX,debugCanvasY,debugCanvasZ] = debugCanvas;
-  const bvh_data = new Uint32Array(memory.buffer, bvh[2], 2*11*tri_count);
-  const bvh_fdata = new Float32Array(memory.buffer, bvh[2], 2*11*tri_count);
+  const bvh_data = new Uint32Array(memory.buffer, bvh.bvh, 2*11*bvh.count);
+  const bvh_fdata = new Float32Array(memory.buffer, bvh.bvh, 2*11*bvh.count);
   const debugCtx2dX = debugCanvasX.getContext('2d')!;
   const debugCtx2dY = debugCanvasY.getContext('2d')!;
   const debugCtx2dZ = debugCanvasZ.getContext('2d')!;
-  const d_SCALE = 0.1;
+  const d_SCALE = 1.3;
   const f = bvh_fdata;
   const c = bvh_data;
   debugCtx2dX.strokeStyle = "red";
   debugCtx2dY.strokeStyle = "green";
   debugCtx2dZ.strokeStyle = "blue";
-  for(let i=0;i<2*tri_count;i++) {
+  for(let i=0;i<2*bvh.count;i++) {
     const idx = i*11;
     const leftNode = c[idx+8];
     const triCount = c[idx+10];
@@ -38,7 +37,7 @@ export const renderBVH = (memory: WebAssembly.Memory, bvh: Uint32Array) => {
       const [aX,aY,aZ] = [f[idx+0],f[idx+1],f[idx+2]];
       const [bX,bY,bZ] = [f[idx+4]-aX,f[idx+5]-aY,f[idx+6]-aZ];
       
-      const SIZE = 200;
+      const SIZE = 1200;
       {
         const x = aX * SIZE/2 * d_SCALE + SIZE/2;
         const y = aY * SIZE/2 * d_SCALE + SIZE/2;
@@ -55,14 +54,13 @@ export const renderBVH = (memory: WebAssembly.Memory, bvh: Uint32Array) => {
   }
 }
 
-export const logBVH = (memory: WebAssembly.Memory, bvh: Uint32Array) => {
+export const logBVH = (memory: WebAssembly.Memory, bvh: {count: number, bvh: number, triIndex: number}) => {
   let log_bvh = '';
-  const tri_count = bvh[3];
-  const bvh_data = new Uint32Array(memory.buffer, bvh[2], 2*11*tri_count);
-  const bvh_fdata = new Float32Array(memory.buffer, bvh[2], 2*11*tri_count);
+  const bvh_data = new Uint32Array(memory.buffer, bvh.bvh, 2*11*bvh.count);
+  const bvh_fdata = new Float32Array(memory.buffer, bvh.bvh, 2*11*bvh.count);
   const f = bvh_fdata;
   const c = bvh_data;
-  for(let i=0;i<2*tri_count;i++) {
+  for(let i=0;i<2*bvh.count;i++) {
     const idx = i*11;
     const leftNode = c[idx+8];
     const triCount = c[idx+10];
@@ -74,10 +72,10 @@ export const logBVH = (memory: WebAssembly.Memory, bvh: Uint32Array) => {
       log_bvh += `MIN: (${aX},${aY},${aZ})\n`
       log_bvh += `MAX: (${bX},${bY},${bZ})\n`
             if(leftNode) {
-        log_bvh += `LeftNode: ${(leftNode-bvh[2])/44}\n`;
+        log_bvh += `LeftNode: ${(leftNode-bvh.bvh)/44}\n`;
       }
       if(triCount > 0) {
-        log_bvh += `FirstTri: ${(c[idx+9]-bvh[1])/4}\n`;
+        log_bvh += `FirstTri: ${(c[idx+9]-bvh.triIndex)/4}\n`;
         log_bvh += `TriCount: ${triCount}\n`;
       }
       log_bvh += `------------------\n`;

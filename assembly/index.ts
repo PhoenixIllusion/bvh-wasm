@@ -75,6 +75,16 @@ class Ret {
   centeroid: u32;
   hit: u32;
   count: u32;
+
+  BINS_min: u32;
+  BINS_max: u32;
+  leftCountArea: u32;
+  rightCountArea: u32;
+  binCount: u32;
+
+  _u8_1: u8;
+  _u8_2: u8;
+  _nodeUsed: u32;
 }
 
 export function Create(numTriangles: u32): Ret {
@@ -85,6 +95,11 @@ export function Create(numTriangles: u32): Ret {
   ret.stack = heap.alloc(4 * 64) as u32;
   ret.centeroid = heap.alloc(32) as u32;
   ret.count = numTriangles;
+  ret.BINS_min = heap.alloc(16* BINS * 2 + 3 * 4 * BINS) as u32;
+  ret.BINS_max = ret.BINS_min + 16 * BINS;
+  ret.binCount = ret.BINS_max + 16 * BINS;
+  ret.leftCountArea = ret.binCount + 4 * BINS;
+  ret.rightCountArea = ret.leftCountArea + 4 * BINS;
 
   for(let i: u32 = 0; i < numTriangles; i++) {
     store<u32>(ret.triIndex + i * 4, ret.triangles + i * SIZE_TRI);
@@ -97,6 +112,7 @@ export function Destroy(ptr: Ret): void {
   heap.free(ptr.triIndex);
   heap.free(ptr.bvh);
   heap.free(ptr.stack);
+  heap.free(ptr.BINS_min);
   heap.free(changetype<u32>(ptr));
 }
 
@@ -149,7 +165,7 @@ export function test_bvh(out: usize, width: u32, height: u32, ret: Ret,
       let t: f32 = 1e30;
       const O = cam;
       const D = VectorMath.normalize_128(v128.sub<f32>(pixPos, O));
-      t = IntersectBVH_recurse(O, D, t, changetype<BVHNode>(ret.bvh), ret);
+      t = IntersectBVH(O, D, t, changetype<BVHNode>(ret.bvh), ret);
       const out_idx = x + y * width;
       store<f32>(out + out_idx*4, t < 1e30 ? t : 0);
     }
@@ -180,11 +196,10 @@ class BVHNode {
 
   aabbMin_p(i: u8):f32 { return load<f32>( changetype<u32>(this) + i * 4); }
 
-  static NodeCost(i: u32, triCount: u32): f32 {
-    const node = changetype<BVHNode>(i);
-    const e = v128.sub<f32>(node.aabbMax,node.aabbMin);
+  nodeCost(): f32 {
+    const e = v128.sub<f32>(this.aabbMax,this.aabbMin);
     const e2 = v128.mul<f32>(v128.shuffle<f32>(e,e,1,2,0,0),e);
-    return (VX(e2)+VY(e2)+VZ(e2)) * triCount;
+    return (VX(e2)+VY(e2)+VZ(e2)) * f32(this.triCount);
   }
 }
 
@@ -203,9 +218,8 @@ function UpdateNodeBounds(node: BVHNode, centroid: u32): void {
   let count = node.triCount;
   for (let i: u32 = 0; i < count; i++) {
     const tri = load<u32>(triId); triId += 4;
-		min4 = v128.min<f32>( min4, Tri.v0(tri) ), max4 = v128.max<f32>( max4, Tri.v0(tri) );
-		min4 = v128.min<f32>( min4, Tri.v1(tri) ), max4 = v128.max<f32>( max4, Tri.v1(tri) );
-		min4 = v128.min<f32>( min4, Tri.v2(tri) ), max4 = v128.max<f32>( max4, Tri.v2(tri) );
+    min4 = MIN4(Tri.v0(tri), Tri.v1(tri),Tri.v2(tri), min4);
+    max4 = MAX4(Tri.v0(tri), Tri.v1(tri),Tri.v2(tri), max4);
 		cmin4 = v128.min<f32>( cmin4, Tri.c(tri) );
 		cmax4 = v128.max<f32>( cmax4, Tri.c(tri) );
   }
@@ -215,31 +229,31 @@ function UpdateNodeBounds(node: BVHNode, centroid: u32): void {
   v128.store(centroid, cmax4, 16);
 }
 
-function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
-  if (node.triCount <= 2)
-    return nodesUsed;
+function Subdivide(node: BVHNode, centeroid: u32, ret: Ret): void {
 
-  // determine split axis and position
-  const aabbMin = node.aabbMin;
-  const extent = v128.sub<f32>(node.aabbMax, aabbMin);
-  let axis:u8 = 0;
-  let extentY = VY(extent);
-  let extentZ = VZ(extent);
-  let _extent = VX(extent);
+  const splitCost = FindBestSplitPlane(node, centeroid, ret);
+  const axis = ret._u8_1;
+  const splitPos = ret._u8_2;
 
-  if (extentY > _extent) { axis = 1; _extent = extentY; }
-  if (extentZ > _extent) { axis = 2; _extent = extentZ; }
-  const splitPos = node.aabbMin_p(axis) + _extent * 0.5;
+  const nosplitCost = node.nodeCost();
+	if (splitCost >= nosplitCost) return;
+
 
   // in-place partition
   const firstTriIdx = node.firstTriIdx;
   const triCount = node.triCount
   let i = firstTriIdx;
   let j = i + (triCount - 1) * 4;
+
+  const cMinAxis = load<f32>(centeroid + axis*4);
+  const cMaxAxis = load<f32>(centeroid + axis*4, 16);
+  const scale: f32 = f32(BINS) /(cMaxAxis - cMinAxis);
+
   while (i <= j) {
     const tri_ptr = i;
     const tri = load<u32>(tri_ptr);
-    if (Tri.c_p(tri, axis) < splitPos)
+    const binIdx = min(BINS - 1, u32((Tri.c_p(tri,axis)- cMinAxis) * scale))
+    if (binIdx < splitPos)
       i += 4;
     else {
       const end_tri_ptr = j;
@@ -251,10 +265,12 @@ function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
   }
   // abort split if one of the sides is empty
   const leftCount = (i - firstTriIdx) / 4;
-  if (leftCount == 0 || leftCount == triCount) return nodesUsed;
+  if (leftCount == 0 || leftCount == triCount) return;
   // create child nodes
+  let nodesUsed = ret._nodeUsed;
   const leftChild = changetype<BVHNode>(nodesUsed);nodesUsed += 44;
   const rightChild = changetype<BVHNode>(nodesUsed);nodesUsed += 44;
+  ret._nodeUsed = nodesUsed;
 
   leftChild.firstTriIdx = firstTriIdx;
   leftChild.triCount = leftCount;
@@ -265,12 +281,12 @@ function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
   node.leftNode = leftChild;
   node.triCount = 0;
 
-  UpdateNodeBounds(leftChild, centroid);
-  UpdateNodeBounds(rightChild, centroid);
-
+  UpdateNodeBounds(leftChild, centeroid);
+  Subdivide(leftChild, centeroid, ret)
+  UpdateNodeBounds(rightChild, centeroid);
+  Subdivide(rightChild, centeroid, ret)
   // recurse
-  nodesUsed = Subdivide(leftChild, nodesUsed, centroid);
-  return Subdivide(rightChild, nodesUsed, centroid);
+  return;
 }
 
 function IntersectAABB(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: v128 ): f32 {
@@ -359,6 +375,88 @@ function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret
   return rayT;
 }
 
+const BINS: u32 = 8;
+
+function INC_32(addr: u32): void {
+  store<u32>(addr, load<u32>(addr)+1)
+}
+function V128_ARR(base: u32, offset: u32): v128 {
+  return v128.load(base + offset * 16);
+}
+function V128_ARR_s(base: u32, offset: u32, v: v128): void {
+  return v128.store(base + offset * 16, v);
+}
+
+function FindBestSplitPlane( node: BVHNode, centeroid: u32, ret: Ret): f32 {
+  let bestCost:f32 = 1e30;
+  
+  const leftCountArea = ret.leftCountArea;
+  const rightCountArea = ret.rightCountArea;
+
+  const min4 = ret.BINS_min;
+  const max4 = ret.BINS_max;
+  const count = ret.binCount;
+
+  let axis: u8 = 0;
+  let splitPos: u8 = 0;
+  for (let a: u8 = 0; a < 3; a++)
+	{
+    const boundsMin = load<f32>(centeroid + a*4);
+    const boundsMax = load<f32>(centeroid + a*4, 16);
+    let scale = f32(BINS) / (boundsMax - boundsMin);
+    let leftSum: f32 = 0, rightSum: f32 = 0;
+
+    memory.fill(ret.BINS_min, 0, 16 * BINS * 2 + BINS * 4);
+
+    const triCount = node.triCount;
+    let triId = node.firstTriIdx;
+    for (let i: u32 = 0; i < triCount; i++ ) {
+      const tri = load<u32>(triId);
+      const binIdx = min(BINS -1, u32((Tri.c_p(tri, a) - boundsMin) * scale)) as u8;
+      INC_32(count + binIdx*4); //count[binIdx]++;
+      let _min4 = V128_ARR(min4, binIdx);
+      let _max4 = V128_ARR(max4, binIdx);
+      _min4 = MIN4(_min4, Tri.v0(tri), Tri.v1(tri), Tri.v2(tri));
+      _max4 = MAX4(_max4, Tri.v0(tri), Tri.v1(tri), Tri.v2(tri));
+      V128_ARR_s(min4, binIdx, _min4);
+      V128_ARR_s(max4, binIdx, _max4);
+    }
+    let leftMin4: v128 = v128.splat<f32>(1e30), rightMin4 = leftMin4;
+		let leftMax4: v128 = v128.splat<f32>(-1e30), rightMax4 = leftMax4;
+    for (let i:u32 = 0; i < BINS - 1; i++)
+		{
+			leftSum += load<u32>(count+ i*4) as f32;
+			rightSum += load<u32>(count+ (BINS - 1 - i)*4) as f32;
+			leftMin4 = v128.min<f32>( leftMin4, V128_ARR(min4, i));
+			rightMin4 = v128.min<f32>( rightMin4, V128_ARR(min4,BINS - 2 - i));
+			leftMax4 = v128.max<f32>( leftMax4, V128_ARR(max4, i));
+			rightMax4 = v128.max<f32>( rightMax4, V128_ARR(max4, BINS - 2 - i));
+			const le = v128.sub<f32>(leftMax4, leftMin4 );
+			const re = v128.sub<f32>( rightMax4, rightMin4 );
+
+      const lc = v128.mul<f32>(le, v128.shuffle<f32>(le,le, 1,2,0,0)); 
+      const rc = v128.mul<f32>(re, v128.shuffle<f32>(re,re, 1,2,0,0));
+			store<f32>(leftCountArea + 4 * i, leftSum * (VX(lc)+VY(lc)+VZ(lc)));
+			store<f32>(rightCountArea + 4 * (BINS - 2 - i), rightSum * (VX(rc)+VY(rc)+VZ(rc)));
+		}
+		// calculate SAH cost for the 7 planes
+		scale = (boundsMax - boundsMin) / f32(BINS);
+		for (let i: u8 = 0; i < BINS - 1; i++)
+		{
+			const planeCost = load<f32>(leftCountArea + 4*i) + load<f32>(rightCountArea + i * 4);
+			if (planeCost < bestCost) {
+				axis = a;
+        splitPos = i + 1;
+        bestCost = planeCost;
+      }
+		}
+	}
+  ret._u8_1 = axis;
+  ret._u8_2 = splitPos;
+	return bestCost;
+}
+
+
 export function BuildBVH(holder: Ret): void {
   const count = holder.count;
   const triangles = holder.triangles;
@@ -376,5 +474,6 @@ export function BuildBVH(holder: Ret): void {
 
   const centeroid = holder.centeroid;
   UpdateNodeBounds(bvh, centeroid);
-  Subdivide(bvh, (holder.bvh + 44), centeroid);
+  holder._nodeUsed = holder.bvh + 44;
+  Subdivide(bvh, centeroid, holder);
 }
