@@ -14,12 +14,12 @@ const run = async () => {
   const tri_count = mesh.indices.length/3;
   const WIDTH = 1600;
   const HEIGHT = 1600;
-  const drawBuffer_ptr = alloc(1200*1200*4, 0);
+  const drawBuffer_ptr = alloc(WIDTH*HEIGHT*4, 0);
 
   const bvh = Create(tri_count);
   const _bvh_data = new Uint32Array(memory.buffer, bvh.valueOf(), 3);
   const triangles = new Float32Array(memory.buffer, _bvh_data[0], 9 * tri_count );
-  const drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, 1200*1200);
+  let drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, WIDTH*HEIGHT);
   drawBuffer.fill(0);
 
   for(let i=0;i<tri_count;i++) {
@@ -40,14 +40,14 @@ const run = async () => {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   canvas.height = HEIGHT;
   canvas.width = WIDTH;
-  canvas.style.width = WIDTH+"px";
-  canvas.style.height = HEIGHT+"px";
+  canvas.style.width = WIDTH/2+"px";
+  canvas.style.height = HEIGHT/2+"px";
   const ctx2d = canvas.getContext('2d')!;
 
   const imgData = ctx2d.createImageData(WIDTH,HEIGHT);
   
-  const SCALE = 1.2;
-  const offset = [0,.5,0];
+  const SCALE = 1;
+  const offset = [0,1,0];
 
   perf('render',() => {
     test_bvh(drawBuffer_ptr, WIDTH, HEIGHT, bvh,
@@ -58,6 +58,7 @@ const run = async () => {
   })
   let outMin = Number.POSITIVE_INFINITY;
   let outMax = Number.NEGATIVE_INFINITY;
+  drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, WIDTH*HEIGHT);
   drawBuffer.forEach( v => {
     if(v !== 0) {
       outMin = Math.min(outMin, v);

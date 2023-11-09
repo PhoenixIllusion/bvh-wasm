@@ -56,9 +56,6 @@ class VectorMath {
 }
 
 const SIZE_TRI = 48;
-const SIZE_BVH = 44;
-
-
 
 @unmanaged
 class Ret {
@@ -80,7 +77,7 @@ export function Create(numTriangles: u32): Ret {
   const ret = new Ret();
   ret.triangles = heap.alloc(SIZE_TRI * numTriangles) as u32;
   ret.triIndex = heap.alloc(4 * numTriangles) as u32;
-  ret.bvh = heap.alloc(SIZE_BVH * 2 * numTriangles) as u32;
+  ret.bvh = heap.alloc(offsetof<BVHNode>() * 2 * numTriangles) as u32;
   ret.stack = heap.alloc(4 * 128) as u32;
   ret.centeroid = heap.alloc(32) as u32;
   ret.count = numTriangles;
@@ -137,15 +134,18 @@ export function test_bvh(out: usize, width: u32, height: u32, ret: Ret,
   const p0 = f32x4(p0x, p0y, p0z, 0);
   const p1 = f32x4(p1x, p1y, p1z, 0);
   const p2 = f32x4(p2x, p2y, p2z, 0);
+
+  const d10 = v128.sub<f32>(p1, p0);
+  const d20 = v128.sub<f32>(p2, p0);
   for (let y: u32 = 0; y < height; y++) {
     for (let x: u32 = 0; x < width; x++) {
       const pixPos = v128.add<f32>(p0, v128.add<f32>(
         v128.mul<f32>(
-          v128.sub<f32>(p1, p0),
+          d10,
           v128.splat<f32>((x as f32) / (width as f32))
         ),
         v128.mul<f32>(
-          v128.sub<f32>(p2, p0),
+          d20,
           v128.splat<f32>((y as f32) / (height as f32))
         )));
 
@@ -219,9 +219,10 @@ function UpdateNodeBounds(node: BVHNode, centroid: u32): void {
   v128.store(centroid, cmax4, 16);
 }
 
-function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
+let nodesUsed: u32 = 0;
+function Subdivide(node: BVHNode, centroid: u32): void {
   if (node.triCount <= 2)
-    return nodesUsed;
+    return;
 
   // determine split axis and position
   const aabbMin = node.aabbMin;
@@ -255,7 +256,7 @@ function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
   }
   // abort split if one of the sides is empty
   const leftCount = (i - firstTriIdx) / 4;
-  if (leftCount == 0 || leftCount == triCount) return nodesUsed;
+  if (leftCount == 0 || leftCount == triCount) return;
   // create child nodes
   const leftChild = changetype<BVHNode>(nodesUsed);nodesUsed += offsetof<BVHNode>();
   const rightChild = changetype<BVHNode>(nodesUsed);nodesUsed += offsetof<BVHNode>();
@@ -273,8 +274,8 @@ function Subdivide(node: BVHNode, nodesUsed: u32, centroid: u32): u32 {
   UpdateNodeBounds(rightChild, centroid);
 
   // recurse
-  nodesUsed = Subdivide(leftChild, nodesUsed, centroid);
-  return Subdivide(rightChild, nodesUsed, centroid);
+  Subdivide(leftChild, centroid);
+  return Subdivide(rightChild, centroid);
 }
 
 function IntersectAABB_SSE(ret: Ret, bmin: v128, bmax: v128 ): f32 {
@@ -343,7 +344,7 @@ function IntersectBVH_recurse( node: BVHNode, ret: Ret): void
     else
     {
       const leftNode = node.leftNode;
-      const rightNode = changetype<BVHNode>(changetype<u32>(leftNode) + 44);
+      const rightNode = changetype<BVHNode>(changetype<u32>(leftNode) + offsetof<BVHNode>());
       IntersectBVH_recurse( leftNode, ret );
       IntersectBVH_recurse( rightNode, ret );
     }
@@ -361,7 +362,7 @@ function IntersectBVH(node: BVHNode, ret: Ret): void
       for (let i: u32 = 0; i < triCount; i++ ) {
         const tri = load<u32>(triId);
         IntersectTri(tri, ret);
-        triId += 4;
+        triId += sizeof<usize>();
       }
       if(stackPtr == 0) {
         break;
@@ -369,6 +370,7 @@ function IntersectBVH(node: BVHNode, ret: Ret): void
         stackPtr -= 4;
         node = changetype<BVHNode>(load<u32>(stack + stackPtr));
       }
+      continue;
     }
     let child1 = node.leftNode;
     let child1_ptr = changetype<u32>(node.leftNode);
@@ -376,11 +378,7 @@ function IntersectBVH(node: BVHNode, ret: Ret): void
     let child2 = changetype<BVHNode>(child2_ptr);
     let dist1 = IntersectAABB_SSE( ret, child1.aabbMin, child1.aabbMax );
     let dist2 = IntersectAABB_SSE( ret, child2.aabbMin, child2.aabbMax);
-    //let dist1 = IntersectAABB( ret, child1_ptr, child1_ptr+offsetof<BVHNode>('aabbMax'));
-    //let dist2 = IntersectAABB( ret, child2_ptr, child2_ptr+offsetof<BVHNode>('aabbMax'));
-    //if(_dist1 != dist1 || _dist2 != dist2) {
-    //  return;
-    //}
+
     if(dist1 > dist2) { //swap
       let _t1: f32 = dist1; dist1 = dist2; dist2 = _t1;
       let _t2: BVHNode = child1; child1 = child2; child2 = _t2;
@@ -403,7 +401,6 @@ function IntersectBVH(node: BVHNode, ret: Ret): void
       }
 		}
   }
-  return;
 }
 
 export function BuildBVH(holder: Ret): void {
@@ -423,5 +420,6 @@ export function BuildBVH(holder: Ret): void {
 
   const centeroid = holder.centeroid;
   UpdateNodeBounds(bvh, centeroid);
-  Subdivide(bvh, (holder.bvh + offsetof<BVHNode>()), centeroid);
+  nodesUsed = holder.bvh + offsetof<BVHNode>();
+  Subdivide(bvh, centeroid);
 }
