@@ -12,12 +12,13 @@ const run = async () => {
   const objStr = await fetch('bunny.obj').then(res => res.text());
   var mesh = new OBJ.Mesh(objStr);
   const tri_count = mesh.indices.length/3;
-  const WIDTH = 1200;
-  const HEIGHT = 1200;
+  const WIDTH = 1600;
+  const HEIGHT = 1600;
   const drawBuffer_ptr = alloc(1200*1200*4, 0);
 
   const bvh = Create(tri_count);
-  const triangles = new Float32Array(memory.buffer, bvh.triangles, 9 * tri_count );
+  const _bvh_data = new Uint32Array(memory.buffer, bvh.valueOf(), 3);
+  const triangles = new Float32Array(memory.buffer, _bvh_data[0], 9 * tri_count );
   const drawBuffer = new Float32Array(memory.buffer, drawBuffer_ptr, 1200*1200);
   drawBuffer.fill(0);
 
