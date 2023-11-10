@@ -11,7 +11,8 @@ export interface WorkerRequest {
   render: {
     ray: Ray,
     target: RenderTarget,
-    range: Range
+    range: Range,
+    buffer: ArrayBuffer
   }
 }
 async function _loadBVH() {
@@ -33,8 +34,8 @@ self.onmessage = async (e) => {
   }
   if(render) {
     const vals = await setup!;
-    const { ray, target, range } = render;
-    const ret = RenderBVH(ray, target, range, vals);
+    const { ray, target, range, buffer } = render;
+    const ret = RenderBVH(ray, target, buffer, range, vals);
     postMessage(ret, {transfer: [ret.canvas]});
   }
 

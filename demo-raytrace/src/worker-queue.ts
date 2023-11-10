@@ -24,8 +24,8 @@ export class WorkerQueue<P,T, M> {
           this.awaits[i] = new Promise<T>(resolve => {
             this.workers[i].postMessage(task.payload, {transfer: transfer});
             this.workers[i].onmessage = (ev) => {
-              this.awaits[i] = undefined;
               Promise.resolve(this.onData && this.onData(task.marker, ev.data));
+              this.awaits[i] = undefined;
               resolve(ev.data)
             }
           })

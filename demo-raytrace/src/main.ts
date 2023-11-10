@@ -63,14 +63,25 @@ async function run() {
 
   const renderGrid = document.getElementById('renderGrid') as HTMLDivElement;
   renderGrid.style.gridTemplateColumns = `repeat(${Math.floor(WIDTH/TILE_SIZE_X)},1fr)`;
-  const canvasGrid: { [key: string]: ImageBitmapRenderingContext|undefined} = {}
-  const getCanvas = (x: number, y: number): ImageBitmapRenderingContext => {
+
+  interface CanvasCache {
+    ctx: CanvasRenderingContext2D,
+    imgData: ImageData,
+    buffer: ArrayBuffer
+  }
+  const canvasGrid: { [key: string]: CanvasCache|undefined} = {}
+
+  const getCanvas = (x: number, y: number): CanvasCache => {
     const key = `${x}-${y}`;
     if(!canvasGrid[key]) {
       const canvas = document.createElement('canvas');
       canvas.width = TILE_SIZE_X;
       canvas.height = TILE_SIZE_Y;
-      canvasGrid[key] = canvas.getContext('bitmaprenderer')!;
+      canvasGrid[key] = {
+        ctx: canvas.getContext('2d')!,
+        imgData: new ImageData(TILE_SIZE_X, TILE_SIZE_Y),
+        buffer: new ArrayBuffer(TILE_SIZE_X * TILE_SIZE_Y * 4)
+      }
       renderGrid.appendChild(canvas);
     }
     return canvasGrid[key]!;
@@ -106,13 +117,14 @@ async function run() {
 
     for(let y=0; y < HEIGHT; y+= TILE_SIZE_Y) {
       for(let x=0; x < WIDTH; x+= TILE_SIZE_X) {
-          getCanvas(x,y); //create in correct order
+          const data = getCanvas(x,y); //create in correct order
           queue.enqueue({render: {
             ray: { o: [... origin], p0: [... p0], p1: [... p1], p2: [... p2]} ,
             target: { x, y, SCREEN_W: WIDTH, SCREEN_H: HEIGHT, TILE_SIZE_X, TILE_SIZE_Y},
-            range: { min: outMin, max: outMax}
+            range: { min: outMin, max: outMax},
+            buffer: data.buffer
           }
-        },{x, y})
+        },{x, y}, [data.buffer])
       }
     }
 
@@ -122,8 +134,10 @@ async function run() {
       outMax = Math.max(range.max, outMax);
       outMin = Math.min(range.min, outMin);
       if(DISABLE_RENDER != 1) {
-        const ctx = getCanvas(x,y);
-        ctx.transferFromImageBitmap(canvas);
+        const data = getCanvas(x,y);
+        data.imgData.data.set(new Uint8ClampedArray(canvas))
+        data.buffer = canvas;
+        data.ctx.putImageData(data.imgData,0,0)
       }
     }
     let now = performance.now();
