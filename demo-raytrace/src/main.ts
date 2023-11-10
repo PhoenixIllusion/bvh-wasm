@@ -1,14 +1,26 @@
 
 import { encode } from 'fast-png';
-import { TILE_SIZE_X, TILE_SIZE_Y } from './bvh';
 import BVHWorker from './worker.ts?worker';
 import { OBJ } from 'webgl-obj-loader';
 import { mat4, vec3 } from 'gl-matrix';
 import { WorkerRequest } from './worker';
+import { WorkerQueue } from './worker-queue';
+import { RenderResponse } from './bvh';
 
-const WIDTH = 640;
-const HEIGHT = 480;
-const THREAD_COUNT = 4;
+const url = new URL(location.href);
+const query = (key: string): number => {
+  const val = url.searchParams.get(key);
+  if(val) { return parseInt(val);}
+  return 0;
+}
+
+const TILE_SIZE_X = query('TILE_SIZE_X')||320;
+const TILE_SIZE_Y = query('TILE_SIZE_Y')||240;
+const WIDTH = query('WIDTH') || 640;
+const HEIGHT = query('HEIGHT') || 480;
+const THREAD_COUNT = query('THREAD_COUNT') || 4;
+
+const DISABLE_RENDER = query('DISABLE_RENDER') || 0;
 
 const loadModel = async () => {
   const objStr = await fetch('bunny.obj').then(res => res.text());
@@ -33,90 +45,9 @@ const loadModel = async () => {
 
 let outMin = Number.POSITIVE_INFINITY;
 let outMax = Number.NEGATIVE_INFINITY;
-function renderBuffer(drawBuffer: Float32Array, imgData: ImageData, ctx2d: CanvasRenderingContext2D, newData: { x: number, y: number, data: Float32Array}[]) {
-  newData.forEach(n => n.data.forEach( (v,i) => {
-    if(v !== 0) {
-      outMin = Math.min(outMin, v);
-      outMax = Math.max(outMax, v);
-      const px = i % TILE_SIZE_X + n.x;
-      const py = 0xFFFF&(i / TILE_SIZE_X) + n.y;
-      if(px < WIDTH && py < HEIGHT) {
-        const buff_idx = (px + py*WIDTH);
-        drawBuffer[buff_idx] = v;
-      }
-    }
-  }));
-  let outD = outMax-outMin;
-  const t = (v: number) => (v-outMin)/outD;
-  const png_out = new Uint16Array(WIDTH * HEIGHT);
-  const C_MAX = 255*255;
-  for(let y=0;y<HEIGHT;y++) {
-    for(let x=0;x<WIDTH;x++) {
-      const buff_idx = (x + y*WIDTH);
-      if(drawBuffer[buff_idx] > 0) {
-        const c = drawBuffer[buff_idx];
-        const v = (1.0-t(c));
-        const idx = buff_idx* 4;
-        imgData.data[idx] = imgData.data[idx+1] = imgData.data[idx+2] = v*255;
-        png_out[buff_idx] =  v*C_MAX;
-        imgData.data[idx+3] = 255;
-      } else {
-        const idx = buff_idx* 4;
-        imgData.data[idx+3] = 255;
-      }
-    }
-  }
-  ctx2d.putImageData(imgData, 0, 0);
-}
-
-class WorkerQueue<P,T, M> {
-  workers: Worker[] = [];
-  awaits: (Promise<T>|undefined)[] = [];
-  queue: {payload: P, marker: M}[] = [];
-  constructor(count: number, onInit: (worker: Worker)=> void) {
-    for(let i=0;i<count;i++) {
-      const worker: Worker = new BVHWorker();
-      this.workers.push(worker);
-      onInit(worker);
-    }
-  }
-  enqueue(payload: P, marker: M): void {
-    this.queue.push({payload, marker});
-  }
-  onData?: (marker: M, response: T)=>void;
-  async process() {
-    while(this.queue.length > 0) {
-      for(let i=0;i<this.workers.length;i++) {
-        if(!this.awaits[i] && this.queue.length > 0) {
-          const task = this.queue.shift()!;
-          this.awaits[i] = new Promise<T>(resolve => {
-            this.workers[i].postMessage(task.payload);
-            this.workers[i].onmessage = (ev) => {
-              this.awaits[i] = undefined;
-              Promise.resolve(this.onData && this.onData(task.marker, ev.data));
-              resolve(ev.data)
-            }
-          })
-        }
-      }
-      await Promise.any(this.awaits);
-    }
-    await Promise.all(this.awaits);
-  }
-}
 
 async function run() {
 
-  const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-  canvas.height = HEIGHT;
-  canvas.width = WIDTH;
-  canvas.style.width = WIDTH+"px";
-  canvas.style.height = HEIGHT+"px";
-  const ctx2d = canvas.getContext('2d')!;
-
-  interface Response {
-    buffer: Float32Array
-  }
   interface Marker {
     x: number,
     y: number
@@ -124,19 +55,28 @@ async function run() {
 
   const modelData = await loadModel();
   const ready: Promise<void>[] = [];
-  const queue = new WorkerQueue<WorkerRequest, Response, Marker>(THREAD_COUNT, (worker) => {
+  const queue = new WorkerQueue<WorkerRequest, RenderResponse, Marker>(BVHWorker, THREAD_COUNT, (worker) => {
     worker.postMessage(modelData);
     ready.push(new Promise(resolve => worker.onmessage = () => resolve()));
     
   })
 
-  const drawBuffer = new Float32Array(WIDTH*HEIGHT);
-  const imgData = ctx2d.createImageData(WIDTH,HEIGHT);
-  
+  const renderGrid = document.getElementById('renderGrid') as HTMLDivElement;
+  renderGrid.style.gridTemplateColumns = `repeat(${Math.floor(WIDTH/TILE_SIZE_X)},1fr)`;
+  const canvasGrid: { [key: string]: ImageBitmapRenderingContext|undefined} = {}
+  const getCanvas = (x: number, y: number): ImageBitmapRenderingContext => {
+    const key = `${x}-${y}`;
+    if(!canvasGrid[key]) {
+      const canvas = document.createElement('canvas');
+      canvas.width = TILE_SIZE_X;
+      canvas.height = TILE_SIZE_Y;
+      canvasGrid[key] = canvas.getContext('bitmaprenderer')!;
+      renderGrid.appendChild(canvas);
+    }
+    return canvasGrid[key]!;
+  }
+  const fps = document.getElementById('fps') as HTMLDivElement;
 
-  //setupCanvas(WIDTH,HEIGHT);
-  //renderBVH(memory, bvh);
-  //logBVH(memory, bvh);
   let count = 0;
   const render = async () => {
 
@@ -155,11 +95,6 @@ async function run() {
     vec3.transformMat4(p0,p0, tM);
     vec3.transformMat4(p1,p1, tM);
     vec3.transformMat4(p2,p2, tM);
-    //vec3.transformMat4(p0,p0, M);
-    //vec3.transformMat4(p1,p1, M);
-    //vec3.transformMat4(p2,p2, M);
-  
-    //queue.enqueue({render: { origin: [... origin], p0: [... p0], p1: [... p1], p2: [... p2]}},{x: 0, y: 0})
 
     const lerp = (dx: number, dy: number) => {
       const v1 = vec3.create();
@@ -168,33 +103,36 @@ async function run() {
       return vec3.lerp(v3, vec3.lerp(v1, p0, p1, dx),vec3.lerp(v2, p2, p3, dx), dy);
     }
 
-    for(let x=0; x < WIDTH; x+= TILE_SIZE_X) {
-      for(let y=0; y < HEIGHT; y+= TILE_SIZE_Y) {
+
+    for(let y=0; y < HEIGHT; y+= TILE_SIZE_Y) {
+      for(let x=0; x < WIDTH; x+= TILE_SIZE_X) {
+          getCanvas(x,y); //create in correct order
           queue.enqueue({render: {
             ray: { o: [... origin], p0: [... p0], p1: [... p1], p2: [... p2]} ,
-            loc: { x, y, SCREEN_W: WIDTH, SCREEN_H: HEIGHT}}
-          },{x, y})
+            target: { x, y, SCREEN_W: WIDTH, SCREEN_H: HEIGHT, TILE_SIZE_X, TILE_SIZE_Y},
+            range: { min: outMin, max: outMax}
+          }
+        },{x, y})
       }
     }
 
-    let res: {x: number, y: number, data: Float32Array }[]= [];
     queue.onData = (marker, response) => {
       const { x, y } = marker;
-      const { buffer } = response;
-      res.push( {x, y, data: buffer});
-      //renderBuffer(drawBuffer, imgData, ctx2d, [{x,y,data: buffer}]);
+      const { range, canvas } = response;
+      outMax = Math.max(range.max, outMax);
+      outMin = Math.min(range.min, outMin);
+      if(DISABLE_RENDER != 1) {
+        const ctx = getCanvas(x,y);
+        ctx.transferFromImageBitmap(canvas);
+      }
     }
-
-    drawBuffer.fill(0);
-    imgData.data.fill(0);
     let now = performance.now();
     //console.log('Awaiting Ready');
     await Promise.all(ready);
     //console.log('Ready, rendering', performance.now()-now);
     now = performance.now();
     await queue.process();
-    //console.log('Total Render', performance.now()-now);
-    renderBuffer(drawBuffer, imgData, ctx2d, res);
+    fps.textContent = 'FPS: '+ 1000/(performance.now()-now)+'fps';
     /*
       const blob = new Blob([encode({width: WIDTH, height: HEIGHT, data: png_out, depth: 16, channels: 1},{})]);
       const blobURL = URL.createObjectURL(blob);
@@ -211,7 +149,42 @@ render();
 
   */
 }
+const buildLinks = () => {
+  const factor_out = (v: number) => {
+    let ret={min:v+1,x:v,y:1};
+    for(let i=1;i<v;i++){
+        if( v % i == 0 && (v/i) % 2 == 0) {
+          let d_x = i;
+          let d_y = v/i;
+          if(d_x + d_y < ret.min) {
+              ret.min = d_x + d_y;
+              ret.y = d_x;
+              ret.x = d_y;
+          }
+        }
+      }
+      return ret;
+  }
 
+  const RES = [[160,120],[320,240],[640,480],[1280,960],[1600,1200]]
+  const out = document.getElementById('render-links')!;
+  const THREADS = [1,2,4,6,8];
+  THREADS.forEach(t_c => {
+    const title = document.createElement('h3');title.textContent='Thread Count: '+t_c;
+    out.appendChild(title);
+    const tileSizes = factor_out(t_c);
+    const d_x = tileSizes.x;
+    const d_y = tileSizes.y;
+    RES.forEach(([w,h]) => {
+      const anchor = document.createElement('a') as HTMLAnchorElement;
+      anchor.textContent = `${w}x${h} Resolution, TileSize: ${w/d_x} x ${h/d_y}`;
+      anchor.href = `index.html?WIDTH=${w}&HEIGHT=${h}&THREAD_COUNT=${t_c}&TILE_SIZE_X=${w/d_x}&TILE_SIZE_Y=${h/d_y}`
+      out.appendChild(anchor);out.appendChild(document.createElement('br'));
+    })
+  });
+}
+
+buildLinks();
 run();
 
 /*
