@@ -34,7 +34,7 @@ class V {
   static Z(a: v128): f32 { return v128.extract_lane<f32>(a, 2); };
 }
 
-class VectorMath {
+export class VectorMath {
   @inline
   static cross_128(a: v128, b: v128): v128 {
     return v128.sub<f32>(
@@ -65,7 +65,7 @@ const BINS: u32 = 8;
 const SIZE_TRI = 48;
 
 @unmanaged
-class Ret {
+export class Ret {
   triangles: u32;
   triIndex: u32
   bvh: u32;
@@ -140,40 +140,6 @@ function IntersectTri(rayO: v128, rayD: v128, rayT: f32, tri: u32, ret: Ret): f3
   return rayT;
 }
 
-export function test_bvh(out: usize, width: u32, height: u32, ret: Ret,
-  camX: f32, camY: f32, camZ: f32,
-  p0x: f32, p0y: f32, p0z: f32,
-  p1x: f32, p1y: f32, p1z: f32,
-  p2x: f32, p2y: f32, p2z: f32): void {
-  const cam = f32x4(camX, camY, camZ, 0);
-  const p0 = f32x4(p0x, p0y, p0z, 0);
-  const p1 = f32x4(p1x, p1y, p1z, 0);
-  const p2 = f32x4(p2x, p2y, p2z, 0);
-
-  const d10 = v128.sub<f32>(p1, p0);
-  const d20 = v128.sub<f32>(p2, p0);
-  for (let y: u32 = 0; y < height; y++) {
-    for (let x: u32 = 0; x < width; x++) {
-      const pixPos = v128.add<f32>(p0, v128.add<f32>(
-        v128.mul<f32>(
-          d10,
-          v128.splat<f32>((x as f32) / (width as f32))
-        ),
-        v128.mul<f32>(
-          d20,
-          v128.splat<f32>((y as f32) / (height as f32))
-        )));
-
-      const rayO = cam;
-      const rayD = VectorMath.normalize_128(v128.sub<f32>(pixPos, cam));
-
-      const t = IntersectBVH(rayO, rayD, 1e30, changetype<BVHNode>(ret.bvh), ret);
-      const out_idx = x + y * width;
-      store<f32>(out + out_idx*4, t < 1e30 ? t : 0);
-    }
-  }
-}
-
 /*
 class AABB {
   static grow(i: u32, p: v128): void {
@@ -189,7 +155,7 @@ class AABB {
 }*/
 
 @unmanaged
-class BVHNode {
+export class BVHNode {
   aabbMin: v128;
   aabbMax: v128;
   leftNode: BVHNode;
@@ -307,7 +273,7 @@ function IntersectAABB_SSE(rayO: v128, rayD: v128, rayT: f32, bmin: v128, bmax: 
     return (_max >= _min && _min < rayT && _max > 0)? _min: 1e30;
 }
 
-function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret): f32
+export function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret): f32
 {
   const stack = ret.stack;
   let stackPtr = 0;

@@ -4,22 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node tests",
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "asbuild:release": "asc assembly/index.ts --target release",
-    "asbuild": "npm run asbuild:debug && npm run asbuild:release",
-    "dev": "vite",
-    "build": "asc assembly/index.ts --target release && tsc && vite build"
+    "asbuild": "npm run asbuild:debug && npm run asbuild:release"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "assemblyscript": "0.27.15",
-    "gl-matrix": "3.4.3",
-    "typescript": "5.2.2",
-    "vite": "4.5.0",
-    "fast-png": "6.2.0",
-    "webgl-obj-loader": "2.0.8"
+    "assemblyscript": "0.27.15"
   },
   "type": "module",
   "exports": {

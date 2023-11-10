@@ -1,11 +1,13 @@
 
 import { encode } from 'fast-png';
-import { TILE_SIZE } from './bvh';
+import { TILE_SIZE_X, TILE_SIZE_Y } from './bvh';
 import BVHWorker from './worker.ts?worker';
 import { OBJ } from 'webgl-obj-loader';
+import { mat4, vec3 } from 'gl-matrix';
+import { WorkerRequest } from './worker';
 
-const WIDTH = 1200;
-const HEIGHT = 1200;
+const WIDTH = 640;
+const HEIGHT = 480;
 const THREAD_COUNT = 4;
 
 const loadModel = async () => {
@@ -36,8 +38,8 @@ function renderBuffer(drawBuffer: Float32Array, imgData: ImageData, ctx2d: Canva
     if(v !== 0) {
       outMin = Math.min(outMin, v);
       outMax = Math.max(outMax, v);
-      const px = i % TILE_SIZE + n.x;
-      const py = 0xFFFF&(i / TILE_SIZE) + n.y;
+      const px = i % TILE_SIZE_X + n.x;
+      const py = 0xFFFF&(i / TILE_SIZE_X) + n.y;
       if(px < WIDTH && py < HEIGHT) {
         const buff_idx = (px + py*WIDTH);
         drawBuffer[buff_idx] = v;
@@ -108,16 +110,10 @@ async function run() {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   canvas.height = HEIGHT;
   canvas.width = WIDTH;
-  canvas.style.width = WIDTH/4+"px";
-  canvas.style.height = HEIGHT/4+"px";
+  canvas.style.width = WIDTH+"px";
+  canvas.style.height = HEIGHT+"px";
   const ctx2d = canvas.getContext('2d')!;
 
-  interface Request {render: {
-    origin: number[],
-    p0: number[],
-    p1: number[],
-    p2: number[]
-  }}
   interface Response {
     buffer: Float32Array
   }
@@ -128,7 +124,7 @@ async function run() {
 
   const modelData = await loadModel();
   const ready: Promise<void>[] = [];
-  const queue = new WorkerQueue<Request, Response, Marker>(THREAD_COUNT, (worker) => {
+  const queue = new WorkerQueue<WorkerRequest, Response, Marker>(THREAD_COUNT, (worker) => {
     worker.postMessage(modelData);
     ready.push(new Promise(resolve => worker.onmessage = () => resolve()));
     
@@ -141,31 +137,43 @@ async function run() {
   //setupCanvas(WIDTH,HEIGHT);
   //renderBVH(memory, bvh);
   //logBVH(memory, bvh);
+  let count = 0;
+  const render = async () => {
 
-  const SCALE = 0.88;
-  const offset = [0.1,.8,0];
-  {
+    const tM = mat4.create();
+    mat4.translate(tM,tM,vec3.fromValues(0,0.7,0));
+    mat4.rotateY(tM, tM, count++*4.5*Math.PI/180);
+    const origin = vec3.fromValues(0,0,8);
+    const ar = WIDTH / HEIGHT;
+    const p0 = vec3.fromValues(-1 * ar, 1, 0);
+    const p1 = vec3.fromValues(1 * ar, 1, 0);
+    const p2 = vec3.fromValues(-1 * ar, -1, 0);
+    const p3 = vec3.fromValues(1 * ar, -1, 0);
 
-    const origin = [0,0,15];
-    const p0 = [-SCALE + offset[0], SCALE + offset[1], -SCALE + offset[2]];
+
+    vec3.transformMat4(origin,origin, tM);
+    vec3.transformMat4(p0,p0, tM);
+    vec3.transformMat4(p1,p1, tM);
+    vec3.transformMat4(p2,p2, tM);
+    //vec3.transformMat4(p0,p0, M);
+    //vec3.transformMat4(p1,p1, M);
+    //vec3.transformMat4(p2,p2, M);
   
-    const genCoords = (dx: number, dy: number) => {
-      return [p0[0]+dx, p0[1]+dy, p0[2]];
-    }
-    const genTriple = (dx: number, dy: number, deltaX: number, deltaY: number) => {
-      return {
-        p0: genCoords(dx, dy),
-        p1: genCoords(dx+ deltaX, dy),
-        p2: genCoords(dx, dy + deltaY)
-      }
+    //queue.enqueue({render: { origin: [... origin], p0: [... p0], p1: [... p1], p2: [... p2]}},{x: 0, y: 0})
+
+    const lerp = (dx: number, dy: number) => {
+      const v1 = vec3.create();
+      const v2 = vec3.create();
+      const v3 = vec3.create();
+      return vec3.lerp(v3, vec3.lerp(v1, p0, p1, dx),vec3.lerp(v2, p2, p3, dx), dy);
     }
 
-    const Q_X = (SCALE * 2)/WIDTH;
-    const Q_Y = -(SCALE * 2)/HEIGHT;
-
-    for(let x=0; x < WIDTH; x+= TILE_SIZE) {
-      for(let y=0; y < HEIGHT; y+= TILE_SIZE) {
-          queue.enqueue({render: {origin, ... genTriple(x*Q_X,y*Q_Y, Q_X*TILE_SIZE,Q_Y*TILE_SIZE)}}, {x, y});
+    for(let x=0; x < WIDTH; x+= TILE_SIZE_X) {
+      for(let y=0; y < HEIGHT; y+= TILE_SIZE_Y) {
+          queue.enqueue({render: {
+            ray: { o: [... origin], p0: [... p0], p1: [... p1], p2: [... p2]} ,
+            loc: { x, y, SCREEN_W: WIDTH, SCREEN_H: HEIGHT}}
+          },{x, y})
       }
     }
 
@@ -177,13 +185,15 @@ async function run() {
       //renderBuffer(drawBuffer, imgData, ctx2d, [{x,y,data: buffer}]);
     }
 
+    drawBuffer.fill(0);
+    imgData.data.fill(0);
     let now = performance.now();
-    console.log('Awaiting Ready');
+    //console.log('Awaiting Ready');
     await Promise.all(ready);
-    console.log('Ready, rendering', performance.now()-now);
+    //console.log('Ready, rendering', performance.now()-now);
     now = performance.now();
     await queue.process();
-    console.log('Total Render', performance.now()-now);
+    //console.log('Total Render', performance.now()-now);
     renderBuffer(drawBuffer, imgData, ctx2d, res);
     /*
       const blob = new Blob([encode({width: WIDTH, height: HEIGHT, data: png_out, depth: 16, channels: 1},{})]);
@@ -194,8 +204,9 @@ async function run() {
       anchor.textContent = 'bunny.png';
       document.body.appendChild(anchor);
       */
+     requestAnimationFrame(render);
   }
-
+render();
   /*
 
   */

@@ -1,4 +1,10 @@
+import { Ray, Loc } from './bvh';
+
 let setup: Promise<{bvh: number, out: Float32Array, out_ref: number}>|undefined;
+
+export interface WorkerRequest {
+  render: { ray: Ray, loc: Loc }
+}
 
 async function _loadBVH() {
   const BVH = await import('./bvh');
@@ -11,7 +17,7 @@ const loadBVH = _loadBVH();
 
 self.onmessage = async (e) => {
   const { SetupBVH, RenderBVH } = await loadBVH;
-  const {tri_count, buffer, render} = e.data as {tri_count: number, buffer: Float32Array, render: { p0: number[], p1: number[], p2: number[], origin: number[]}};
+  const {tri_count, buffer, render} = e.data as {tri_count: number, buffer: Float32Array, render: { ray: Ray, loc: Loc}};
   if(tri_count != undefined) {
     setup = SetupBVH(buffer);
     await setup;
@@ -19,7 +25,7 @@ self.onmessage = async (e) => {
   }
   if(render) {
     const vals = await setup!;
-    postMessage({buffer: RenderBVH(render.origin, render.p0, render.p1, render.p2, vals)});
+    postMessage({buffer: RenderBVH(render.ray, render.loc, vals)});
   }
 
 }

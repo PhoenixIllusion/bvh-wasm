@@ -17,3 +17,19 @@ Dev:
   res: 1200x1200
   build bvh 791.8
   render 1905.8
+
+MultThreaded: 
+Dev:
+  res: 1200x1200
+  Max: build bvh 1606.3
+  Max: render-batch 875.1
+  Total Render 903.5
+Release:
+  res: 1200x1200
+  Max: build bvh 871
+  Max: render-batch 371
+  Total Render 418
+
+
+Old SSE:
+Total Render 7518.199999928474
