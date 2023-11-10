@@ -1,5 +1,6 @@
 import { memory, __new as alloc, Create, test_bvh, BuildBVH } from '../build/release.min.js';
 
+const HEATMAP = false;
 const perf = (label: string, func: ()=>void) => {
   const now = performance.now();
   func();
@@ -31,11 +32,16 @@ const offscreenRender = (out: Uint8ClampedArray, width: number, height: number, 
     for(let x=0;x<width;x++) {
       const buff_idx = (x + y*width);
       const idx = buff_idx* 4;
-      out[idx] = 255 * timeTaken/20;
+      if(HEATMAP) {
+        out[idx] = 255 * timeTaken/20;
+      }
       if(buffer[buff_idx] > 0) {
         const c = buffer[buff_idx];
         const v = (1.0-t(c));
         out[idx+1] = out[idx+2] = v*255;
+        if(!HEATMAP) {
+          out[idx] = out[idx+1];
+        }
         out[idx+3] = 255;
       } else {
         const idx = buff_idx* 4;

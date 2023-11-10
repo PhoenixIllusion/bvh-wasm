@@ -1,8 +1,7 @@
-
-import { encode } from 'fast-png';
-import BVHWorker from './worker.ts?worker';
-import { OBJ } from 'webgl-obj-loader';
-import { mat4, vec3 } from 'gl-matrix';
+/// <reference types="vite/client" />
+import BVHWorker from './worker?worker';
+import { mat4 } from 'gl-matrix';
+import { vec3 } from 'gl-matrix';
 import { WorkerRequest } from './worker';
 import { WorkerQueue } from './worker-queue';
 import { RenderResponse } from './bvh';
@@ -22,24 +21,42 @@ const THREAD_COUNT = query('THREAD_COUNT') || 4;
 
 const DISABLE_RENDER = query('DISABLE_RENDER') || 0;
 
+class Mesh {
+  public readonly vertices: Float32Array;
+  constructor(str: string) {
+    const v_lookup:number[][] = [];
+    const vertices: number[] = [];
+    str.split('\n').forEach(line => {
+      if(line.startsWith('v ')) v_lookup.push(line.split(/\s+/).slice(1).map(parseFloat))
+      if(line.startsWith('f ')) vertices.push(
+        ... Array.from(this.triangulate(line.split(/\s+/).slice(1))).map(tri => tri.map(v => 
+          v_lookup[parseInt(v.split('/')[0],10)-1]
+        ).flat()).flat()
+      )
+    })
+    this.vertices = new Float32Array(vertices);
+  }
+  private *triangulate(elements: string[]) {
+    if (elements.length <= 3) {
+        yield elements;
+    } else if (elements.length === 4) {
+        yield [elements[0], elements[1], elements[2]];
+        yield [elements[2], elements[3], elements[0]];
+    } else {
+        for (let i = 1; i < elements.length - 1; i++) {
+            yield [elements[0], elements[i], elements[i + 1]];
+        }
+    }
+}
+}
+
+
 const loadModel = async () => {
   const objStr = await fetch('bunny.obj').then(res => res.text());
-  var mesh = new OBJ.Mesh(objStr);
-  const tri_count = mesh.indices.length/3;
-  const buffer = new Float32Array(tri_count*3*3);
-  for(let i=0;i<tri_count;i++) {
-    const offset = i * 9;
-    const idx = i * 3;
-    for(let j=0;j<3;j++) {
-      const v = mesh.indices[idx+j]*3;
-      for(let k=0;k<3;k++) {
-        buffer[offset + j*3 + k] = mesh.vertices[v+k];
-      }
-    }
-  }
+  var mesh = new Mesh(objStr);
   return {
-    tri_count,
-    buffer
+    tri_count: mesh.vertices.length/9,
+    buffer: mesh.vertices
   }
 }
 
@@ -99,21 +116,11 @@ async function run() {
     const p0 = vec3.fromValues(-1 * ar, 1, 0);
     const p1 = vec3.fromValues(1 * ar, 1, 0);
     const p2 = vec3.fromValues(-1 * ar, -1, 0);
-    const p3 = vec3.fromValues(1 * ar, -1, 0);
-
 
     vec3.transformMat4(origin,origin, tM);
     vec3.transformMat4(p0,p0, tM);
     vec3.transformMat4(p1,p1, tM);
     vec3.transformMat4(p2,p2, tM);
-
-    const lerp = (dx: number, dy: number) => {
-      const v1 = vec3.create();
-      const v2 = vec3.create();
-      const v3 = vec3.create();
-      return vec3.lerp(v3, vec3.lerp(v1, p0, p1, dx),vec3.lerp(v2, p2, p3, dx), dy);
-    }
-
 
     for(let y=0; y < HEIGHT; y+= TILE_SIZE_Y) {
       for(let x=0; x < WIDTH; x+= TILE_SIZE_X) {

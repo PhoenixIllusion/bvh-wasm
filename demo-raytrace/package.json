@@ -9,7 +9,7 @@
     "asbuild:release": "asc ../assembly/demo.ts --target release",
     "asbuild": "npm run asbuild:debug && npm run asbuild:release",
     "dev": "vite",
-    "build": "asc assembly/index.ts --target release && tsc && vite build"
+    "build": "asc ../assembly/demo.ts --target release && tsc && vite build"
   },
   "author": "",
   "license": "ISC",
@@ -17,11 +17,8 @@
     "assemblyscript": "0.27.15",
     "gl-matrix": "3.4.3",
     "typescript": "5.2.2",
-    "vite": "4.5.0",
-    "webgl-obj-loader": "2.0.8"
+    "vite": "4.5.0"
   },
   "type": "module",
-  "dependencies": {
-
-  }
+  "dependencies": {}
 }
