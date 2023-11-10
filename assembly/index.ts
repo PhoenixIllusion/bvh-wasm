@@ -330,7 +330,7 @@ function IntersectBVH(rayO: v128, rayD: v128, rayT: f32, node: BVHNode, ret: Ret
       continue;
     }
     let child1 = node.leftNode;
-    let child1_ptr = changetype<u32>(node.leftNode);
+    let child1_ptr = changetype<u32>(child1);
     let child2_ptr = child1_ptr + offsetof<BVHNode>()
     let child2 = changetype<BVHNode>(child2_ptr);
     let dist1 = IntersectAABB_SSE(rayO, rayD, rayT, child1.aabbMin, child1.aabbMax );
