@@ -1,4 +1,5 @@
-import { memory, __new as alloc, Create, test_bvh, BuildBVH } from '../build/release.min.js';
+import { memory, __new as alloc, Create, test_bvh, BuildBVH } from '../build/release.js';
+import type { __Internref0 as BVH } from '../build/release.js';
 
 const HEATMAP = false;
 const perf = (label: string, func: ()=>void) => {
@@ -10,7 +11,7 @@ const perf = (label: string, func: ()=>void) => {
 export interface SetupResponse {
   out?: Float32Array;
   out_ref: number;
-  bvh: number;
+  bvh: BVH;
 }
 
 export const setup = async (buffer: Float32Array): Promise<SetupResponse> => {
@@ -22,7 +23,7 @@ export const setup = async (buffer: Float32Array): Promise<SetupResponse> => {
   perf('build bvh', () => {
     BuildBVH(bvh);
   })
-  return {bvh: bvh.valueOf(), out: undefined, out_ref: 0 };
+  return {bvh: bvh, out: undefined, out_ref: 0 };
 }
 
 const offscreenRender = (out: Uint8ClampedArray, width: number, height: number, buffer: Float32Array, range: { min: number, max: number}, timeTaken: number) => {

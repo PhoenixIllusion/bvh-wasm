@@ -6,7 +6,8 @@
   "scripts": {
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "asbuild:release": "asc assembly/index.ts --target release",
-    "asbuild": "npm run asbuild:debug && npm run asbuild:release"
+    "asbuild": "npm run asbuild:debug && npm run asbuild:release",
+    "git-pages": "cd .git-pages && sh build.sh"
   },
   "author": "",
   "license": "ISC",
