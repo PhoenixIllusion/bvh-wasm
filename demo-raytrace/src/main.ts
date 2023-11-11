@@ -79,7 +79,7 @@ async function run() {
   })
 
   const renderGrid = document.getElementById('renderGrid') as HTMLDivElement;
-  renderGrid.style.gridTemplateColumns = `repeat(${Math.floor(WIDTH / TILE_SIZE_X)},1fr)`;
+  renderGrid.style.gridTemplateColumns = `repeat(${Math.ceil(WIDTH / TILE_SIZE_X)},1fr)`;
 
   interface CanvasCache {
     ctx: CanvasRenderingContext2D,
@@ -176,13 +176,12 @@ const buildLinks = () => {
   THREADS.forEach(t_c => {
     const title = document.createElement('h3'); title.textContent = 'Thread Count: ' + t_c;
     out.appendChild(title);
-    const tileSizes = factor_out(t_c);
-    const d_x = tileSizes.x;
-    const d_y = tileSizes.y;
     RES.forEach(([w, h]) => {
       const anchor = document.createElement('a') as HTMLAnchorElement;
-      anchor.textContent = `${w}x${h} Resolution, TileSize: ${w / d_x} x ${h / d_y}`;
-      anchor.href = `index.html?WIDTH=${w}&HEIGHT=${h}&THREAD_COUNT=${t_c}&TILE_SIZE_X=${w / d_x}&TILE_SIZE_Y=${h / d_y}`
+      const tile_x = Math.max(100, w*0.1);
+      const tile_y = Math.max(100, h*0.1);
+      anchor.textContent = `${w}x${h} Resolution, TileSize: ${tile_x} x ${tile_y}`;
+      anchor.href = `index.html?WIDTH=${w}&HEIGHT=${h}&THREAD_COUNT=${t_c}&TILE_SIZE_X=${tile_x}&TILE_SIZE_Y=${tile_y}`
       out.appendChild(anchor); out.appendChild(document.createElement('br'));
     })
   });
