@@ -154,22 +154,6 @@ async function run() {
   render();
 }
 const buildLinks = () => {
-  const factor_out = (v: number) => {
-    let ret = { min: v + 1, x: v, y: 1 };
-    for (let i = 1; i < v; i++) {
-      if (v % i == 0 && (v / i) % 2 == 0) {
-        let d_x = i;
-        let d_y = v / i;
-        if (d_x + d_y < ret.min) {
-          ret.min = d_x + d_y;
-          ret.y = d_x;
-          ret.x = d_y;
-        }
-      }
-    }
-    return ret;
-  }
-
   const RES = [[160, 120], [320, 240], [640, 480], [1280, 960], [1600, 1200]]
   const out = document.getElementById('render-links')!;
   const THREADS = [1, 2, 4, 6, 8];
