@@ -1,0 +1,47 @@
+Arguments: 
+  /Users/jonathan.baran/.nvm/versions/node/v16.20.2/bin/node /Users/jonathan.baran/.nvm/versions/node/v16.20.2/bin/yarn install
+
+PATH: 
+  /Users/jonathan.baran/emscripten/emsdk:/Users/jonathan.baran/emscripten/emsdk/upstream/emscripten:/Users/jonathan.baran/.nvm/versions/node/v16.20.2/bin:/opt/local/bin:/opt/local/sbin:/Users/jonathan.baran/bin:~/.gem/bin:/opt/android/android-sdk/tools/:/Users/jonathan.baran/.gem/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/X11/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/Library/Frameworks/Mono.framework/Versions/Current/Commands
+
+Yarn version: 
+  1.22.19
+
+Node version: 
+  16.20.2
+
+Platform: 
+  darwin x64
+
+Trace: 
+  SyntaxError: /Users/jonathan.baran/Desktop/workspace/assembly-script/bvh/pvs/package.json: Unexpected token } in JSON at position 149
+      at JSON.parse (<anonymous>)
+      at /Users/jonathan.baran/.nvm/versions/node/v16.20.2/lib/node_modules/yarn/lib/cli.js:1629:59
+      at Generator.next (<anonymous>)
+      at step (/Users/jonathan.baran/.nvm/versions/node/v16.20.2/lib/node_modules/yarn/lib/cli.js:310:30)
+      at /Users/jonathan.baran/.nvm/versions/node/v16.20.2/lib/node_modules/yarn/lib/cli.js:321:13
+
+npm manifest: 
+  {
+    "name": "@phoenixillusion/example-bvh-pvs",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+      "dev": "vite",
+    },
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+      "typescript": "5.2.2",
+      "vite": "4.5.0"
+    },
+    "type": "module",
+    "dependencies": {}
+  }
+
+yarn manifest: 
+  No manifest
+
+Lockfile: 
+  No lockfile

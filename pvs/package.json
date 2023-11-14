@@ -1,0 +1,19 @@
+{
+  "name": "@phoenixillusion/example-bvh-pvs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "5.2.2",
+    "vite": "4.5.0"
+  },
+  "type": "module",
+  "dependencies": {
+    "gl-matrix": "3.4.3"
+  }
+}
