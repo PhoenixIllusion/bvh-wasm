@@ -114,6 +114,44 @@ export function rayFromEdge(edge0: Edge, edge1: Edge, edges: Edge[]): Edge[] {
   return [];
 }
 
+function is_corner(p: vec2, edgeHash: EdgeHash): boolean {
+  const k = key(p);
+  return edgeHash[0][k]!=undefined && edgeHash[1][k]!=undefined;
+}
+
+function processPortalEdges(portals: Edge[], edgeHash: EdgeHash): void {
+  const portal_hash: Record<string,Edge[]> = {};
+  const corners: Record<string, boolean> = {};
+  portals.forEach(e => {
+    const k0 = key(e.p0);
+    const k1 = key(e.p1);
+    corners[k0] = is_corner(e.p0, edgeHash);
+    corners[k1] = is_corner(e.p1, edgeHash);
+    portal_hash[k0] = portal_hash[k0]||[];
+    portal_hash[k1] = portal_hash[k1]||[];
+    portal_hash[k0].push(e);
+    portal_hash[k1].push(e);
+  });
+  const toRemove: Edge[] = [];
+  Object.entries(portal_hash).forEach(([k, lines]) => {
+    if(corners[k] && lines.length > 0) {
+      const non_corner = lines.filter(l => !(corners[key(l.p0)] && corners[key(l.p1)]));
+      if(non_corner.length == lines.length) {
+        const shortest = lines.sort((a,b)=> edge_length(a)-edge_length(b))[0];
+        toRemove.push(... lines.filter(l => l!=shortest));
+      } else {
+        toRemove.push(... non_corner);
+      }
+    }
+  });
+  toRemove.forEach( e => {
+    const idx = portals.indexOf(e);
+    if(idx >=0) {
+      portals.splice(idx, 1);
+    }
+  })
+}
+
 export function generatePotentialPortals(edges: Edge[], hash: EdgeHash): Edge[] {
   const ret: Edge[] = [];
   edges.forEach(e => {
@@ -122,6 +160,7 @@ export function generatePotentialPortals(edges: Edge[], hash: EdgeHash): Edge[] 
       ret.push(... rayFromEdge(e, edge, edges));
     }
   });
+  processPortalEdges(ret, hash);
   return ret;
 }
 
