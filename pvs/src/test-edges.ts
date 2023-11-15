@@ -1,5 +1,5 @@
 import { edge_edge_intersect, line_intersects } from "./math/intersect";
-import { Edge } from "./models/edge";
+import { Edge, vec2 } from "./models/edge";
 import { context2D, line2d } from "./util";
 
 const WIDTH = 600;
@@ -13,12 +13,19 @@ const randomPoint = () => {
   }
 }
 
+function calcNorm(a: {x: number, y: number}, b: {x: number, y: number}): vec2 {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.sqrt(dx*dx+dy*dy);
+  return [dy/len, -dx/len]
+}
+
 const randomLine = (): Edge|undefined => {
   for(let i=0;i<100;i++) {
     const p0 = randomPoint()
     const p1 = randomPoint()
     if(p0.x != p1.x && p0.y != p0.x) {
-      return {p0: [p0.x,p0.y], p1: [p1.x, p1.y]};
+      return {p0: [p0.x,p0.y], p1: [p1.x, p1.y], n: calcNorm(p0, p1)};
     }
   }
 }

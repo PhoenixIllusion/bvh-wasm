@@ -1,10 +1,15 @@
 import { Edge } from "./models/edge";
 
-type vec2 = [number, number];
+function calcNorm(a: {x: number, y: number}, b: {x: number, y: number}) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.sqrt(dx*dx+dy*dy);
+  return [dy/len, -dx/len]
+}
 
 function edgesFromRect(rect: SVGRectElement): Edge[] {
   const v = (v: SVGAnimatedLength) => v.baseVal.value;
-  const toEdge = (a: SVGPoint, b: SVGPoint): Edge => ({p0: [a.x, a.y], p1: [b.x, b.y]});
+  const toEdge = (a: SVGPoint, b: SVGPoint): Edge => ({p0: [a.x, a.y], p1: [b.x, b.y], n: calcNorm(a,b)});
   const svg = rect.ownerSVGElement!;
   const p = (x: number, y: number) => { const p = svg.createSVGPoint(); p.x = x; p.y = y; return p; }
   const x = v(rect.x);
