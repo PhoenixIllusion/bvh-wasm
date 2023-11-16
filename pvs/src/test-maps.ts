@@ -1,7 +1,7 @@
 
 import { Edge, vec2 } from './models/edge';
 import { importSVG } from './svg-parser';
-import { line2d, splitEdgesIfNeeded, hashEdges, removeExcessEdges, generatePotentialPortals } from './util';
+import { buildPortals, cell2d, context2D, get_random_color, line2d, selectColor } from './util';
 
 
 function drawNormal(e: Edge) {
@@ -14,13 +14,16 @@ function drawNormal(e: Edge) {
   line2d(p0, p1, 'green');
 }
 
-const edges = await importSVG('simple-002.svg');
-splitEdgesIfNeeded(edges);
-const hash = hashEdges(edges);
-removeExcessEdges(edges, hash);
+const { edges, portals, cells } = buildPortals(await importSVG('test-005.svg'));
 
-const portals = generatePotentialPortals(edges, hash);
-
+cells.sort((a,b) => a[0].id - b[0].id).forEach((cell,i) => {
+  if(cell[0].id !== -1) {
+    cell2d(cell, get_random_color());
+  } else {
+    cell2d(cell, '#FF00FF');
+  }
+})
+context2D.fillStyle='transparent'
 edges.forEach(e => {
   line2d(e.p0, e.p1, 'black');
   drawNormal(e);
@@ -30,4 +33,5 @@ portals.forEach(e => {
   drawNormal(e);
 })
 
-console.log(edges);
+
+console.log({edges,portals, cells});

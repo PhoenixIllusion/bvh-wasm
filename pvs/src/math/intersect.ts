@@ -80,7 +80,12 @@ export function edge_calc_normal(a: vec2, b: vec2): vec2 {
   const len = Math.sqrt(dx*dx+dy*dy);
   return [dy/len, -dx/len]
 }
-
+export function vec2_add(a: vec2, b: vec2): vec2 {
+  return [a[0]+b[0],a[1]+b[1]];
+}
+export function vec2_sub(a: vec2, b: vec2): vec2 {
+  return [a[0]-b[0],a[1]-b[1]];
+}
 export function vec2_clone(a: vec2): vec2 {
   return [a[0],a[1]];
 }
