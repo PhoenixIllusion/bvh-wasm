@@ -1,5 +1,6 @@
-import { edge_edge_intersect, vec2_equal, edge_calc_normal, closest_ray_intersection, deg_angle_between, vec2_clone, edge_length, nearest_point_on_line, vec2_add } from "./math/intersect";
+import { vec2_equal, edge_calc_normal, closest_ray_intersection, deg_angle_between, vec2_clone, edge_length, nearest_point_on_line, dist_vec2_to_Edge } from "./math/intersect";
 import { Edge, vec2 } from "./models/edge";
+import { PortalEdge, Cell, CellEdge } from "./models/portal-cells";
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 
@@ -40,19 +41,21 @@ export function cell2d(cell: Edge[], color: string) {
 }
 
 function splitEdgesIfNeeded(edges: Edge[], additionalEdges: Edge[] = []) {
-  const out: vec2 = [0,0];
   for(let i=0;i< edges.length + additionalEdges.length;i++) {
+    const e0 = edges[i] || additionalEdges[i-edges.length]
     for(let j=0;j< edges.length; j++) {
       if(i !== j) {
-        const e0 = edges[i] || additionalEdges[i-edges.length]
         const e1 = edges[j];
-        if(edge_edge_intersect(out, e0, e1)) {
-          if(!(vec2_equal(e1.p0, out)||vec2_equal(e1.p1, out))) {
-            const new_p = { p0: [out[0],out[1]] as vec2, p1: e1.p1, id: e1.id}
-            e1.p1 = [out[0],out[1]];
-            edges.push({... new_p,  n: edge_calc_normal(new_p.p0, new_p.p1)});
+        [e0.p1, e0.p0].forEach( p => {
+          const dist = dist_vec2_to_Edge(e1.p0[0], e1.p0[1], e1.p1[0],e1.p1[1], p[0],p[1]);
+          if(dist < 0.01) {
+            if(!(vec2_equal(e1.p0, p)||vec2_equal(e1.p1, p))) {
+              const new_p = { p0: [p[0],p[1]] as vec2, p1: e1.p1, id: e1.id}
+              e1.p1 = [p[0],p[1]];
+              edges.push({... new_p,  n: edge_calc_normal(new_p.p0, new_p.p1)});
+            }
           }
-        }
+        });
       }
     }
   }
@@ -102,7 +105,7 @@ export function get_random_color() {
   return 'hsl(' + h + ',' + s + '%,' + l + '%)';
 }
 export function selectColor(number: number) {
-  const hue = number * 137.508; // use golden angle approximation
+  const hue = number * 65; // use golden angle approximation
   const sat = number / 8 + 50;
   return `hsl(${hue},${sat}%,75%)`;
 }
@@ -185,7 +188,7 @@ function processPortalEdges(portals: Edge[], edgeHash: EdgeHash): void {
   })
 }
 
-function generatePotentialPortals(edges: Edge[], hash: EdgeHash): Edge[] {
+function generatePotentialPortals(edges: Edge[], hash: EdgeHash): PortalEdge[] {
   const portals: Edge[] = [];
   edges.forEach(e => {
     const edge = hash[0][key(e.p1)].sort((a,b)=> deg_angle_between(e,b)-deg_angle_between(e,a))[0];
@@ -195,28 +198,25 @@ function generatePotentialPortals(edges: Edge[], hash: EdgeHash): Edge[] {
   });
   processPortalEdges(portals, hash);
   const portal_edges: Record<string, boolean> = {};
-  const ret: Edge[] = [];
+  const ret: PortalEdge[] = [];
   portals.forEach( e => {
     const k_0_1 = key(e.p0)+"_"+key(e.p1);
     const k_1_0 = key(e.p1)+"_"+key(e.p0);
-    if(!portal_edges[k_0_1]) {
-      ret.push(e);
-      portal_edges[k_0_1] = true;
-    }
-    if(!portal_edges[k_1_0]) {
-      const inv: Edge = { p0: vec2_clone(e.p1), p1: vec2_clone(e.p0), id: -1, n: [ -e.n[0], -e.n[1]]};
-      ret.push(inv);
+    if(!portal_edges[k_0_1] && !portal_edges[k_1_0]) {
+      const pe = e as PortalEdge;
+      const inv: PortalEdge = { p0: vec2_clone(e.p1), p1: vec2_clone(e.p0), id: -1, n: [ -e.n[0], -e.n[1]], pair_edge: pe};
       portal_edges[k_1_0] = true;
+      portal_edges[k_0_1] = true;
+      pe.pair_edge  = inv;
+      ret.push(pe, inv);
     }
   })
   return ret;
 }
 
-type Cell = Edge[];
-
 function generateCells(edges: Edge[]): Cell[] {
   const portalHash = hashEdges(edges);
-  const cells: Edge[][] = [];
+  const cells: Cell[] = [];
   const edgeFilter = (e: Edge) => {
     return (x: Edge) => {
       return !(vec2_equal(e.p0,x.p1) && vec2_equal(e.p1, x.p0))
@@ -233,17 +233,16 @@ function generateCells(edges: Edge[]): Cell[] {
   edges.forEach(e => {
     if(e.id == -1) {
       const id = cellId++;
-      const cell = [];
-      let nE: Edge = nextEdge(e);
-      nE.id = id;
+      const cell: CellEdge[] = [];
+      let nE = nextEdge(e) as CellEdge;
       cell.push(nE);
-      while(nE != undefined && (nE = nextEdge(nE))) {
-        nE.id = id;
+      while(nE != undefined && (nE = nextEdge(nE) as CellEdge)) {
         cell.push(nE);
         if(nE == e) {
           break;
         }
       }
+      cell.forEach( ce => { ce.cell = cell, ce.id = id});
       cells.push(cell);
     }
   });
@@ -268,7 +267,6 @@ function find_exterior_cell(cells: Cell[], min_max: {min: vec2, max: vec2}) {
     const cell = cells[i];
     for(let j=0;j<cell.length;j++) {
       const edge=cell[j];
-
       if(edge.p0[0] == min_max.min[0] || edge.p0[0] == min_max.max[0] || edge.p0[1] == min_max.min[1] || edge.p0[1] == min_max.max[1]) {
         cell.forEach(l => l.id = -1);
         return;
@@ -277,18 +275,16 @@ function find_exterior_cell(cells: Cell[], min_max: {min: vec2, max: vec2}) {
   }
 }
 
-export function buildPortals(edges: Edge[]): { edges: Edge[], portals: Edge[], cells: Cell[]} {
+export function buildPortals(edges: Edge[]): Cell[] {
   splitEdgesIfNeeded(edges);
   const hash = hashEdges(edges);
   removeExcessEdges(edges, hash);
-
   const portals = generatePotentialPortals(edges, hash);
-
   splitEdgesIfNeeded(edges, portals);
   const cells = generateCells([... edges, ... portals]);
   const min_max = min_max_edges(edges);
   find_exterior_cell(cells, min_max);
-  return { edges, portals, cells};
+  return cells;
 }
 
 export { context2D }

@@ -42,8 +42,30 @@ function findNearestPointOnLine(px: number, py: number, ax: number, ay: number, 
     return { x: ax + (atob.x * t), y: ay + (atob.y * t) };
 }
 
+export function dist_vec2_to_Edge(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number)
+  {
+      const px=x2-x1;
+      const py=y2-y1;
+      const temp=(px*px)+(py*py);
+      let u=((x3 - x1) * px + (y3 - y1) * py) / (temp);
+      if(u>1){
+          u=1;
+      }
+      else if(u<0){
+          u=0;
+      }
+      const x = x1 + u * px;
+      const y = y1 + u * py;
+
+      const dx = x - x3;
+      const dy = y - y3;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      return dist;
+}
+
 export function edge_edge_intersect(out: [number, number], edge0: Edge, edge1: Edge, r_out: number[] = []): boolean {
-  return line_intersects(out, edge0.p0[0], edge0.p0[1],
+  return line_intersects(out,
+    edge0.p0[0], edge0.p0[1],
     edge0.p1[0], edge0.p1[1],
     edge1.p0[0], edge1.p0[1],
     edge1.p1[0], edge1.p1[1], r_out)
@@ -58,10 +80,10 @@ export function deg_angle_between(a: Edge, b: Edge): number {
   if(ret < -180) return ret + 360;
   return ret;
 }
-
+const EPSILON = 1e-6;
 
 export function vec2_equal(a: vec2, b: vec2): boolean {
-  return a[0] == b[0] && a[1] == b[1];
+  return Math.abs(a[0] - b[0]) < EPSILON && Math.abs(a[1] - b[1]) < EPSILON;
 }
 
 export function vec2_average(a: vec2, b: vec2): vec2 {
@@ -92,7 +114,7 @@ export function vec2_clone(a: vec2): vec2 {
 
 export function nearest_point_on_line(point: vec2, line: Edge): vec2 {
   const res = findNearestPointOnLine(point[0],point[1], line.p0[0], line.p0[1], line.p1[0], line.p1[1])
-  return [res.x, res.y]
+  return [res.x, res.y];
 }
 
 export function closest_ray_intersection(out: [number, number], ray0: Edge, edges: Edge[], line_out: Edge[]=[]) {

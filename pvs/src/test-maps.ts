@@ -1,7 +1,8 @@
 
 import { Edge, vec2 } from './models/edge';
+import { cellsToJSON } from './models/json';
 import { importSVG } from './svg-parser';
-import { buildPortals, cell2d, context2D, get_random_color, line2d, selectColor } from './util';
+import { PortalEdge, buildPortals, cell2d, context2D, get_random_color, line2d, selectColor } from './util';
 
 
 function drawNormal(e: Edge) {
@@ -14,7 +15,7 @@ function drawNormal(e: Edge) {
   line2d(p0, p1, 'green');
 }
 
-const { edges, portals, cells } = buildPortals(await importSVG('test-005.svg'));
+const cells = buildPortals(await importSVG('test-005.svg'));
 
 cells.sort((a,b) => a[0].id - b[0].id).forEach((cell,i) => {
   if(cell[0].id !== -1) {
@@ -23,15 +24,19 @@ cells.sort((a,b) => a[0].id - b[0].id).forEach((cell,i) => {
     cell2d(cell, '#FF00FF');
   }
 })
-context2D.fillStyle='transparent'
-edges.forEach(e => {
-  line2d(e.p0, e.p1, 'black');
-  drawNormal(e);
-})
-portals.forEach(e => {
-  line2d(e.p0, e.p1, 'cyan');
-  drawNormal(e);
+context2D.fillStyle='transparent';
+
+cells.forEach(cell => {
+  cell.forEach( e => {
+    const edge: Edge|PortalEdge = e;
+    if((edge as PortalEdge)?.pair_edge) {
+      line2d(e.p0, e.p1, 'cyan');
+    } else {
+      line2d(e.p0, e.p1, 'black');
+    }
+    drawNormal(e);
+  })
 })
 
-
-console.log({edges,portals, cells});
+const textArea = document.querySelector('textarea')!;
+textArea.value = cellsToJSON(cells);
