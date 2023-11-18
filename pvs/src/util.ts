@@ -1,6 +1,7 @@
-import { vec2_equal, edge_calc_normal, closest_ray_intersection, deg_angle_between, vec2_clone, edge_length, nearest_point_on_line, dist_vec2_to_Edge } from "./math/intersect";
-import { Edge, vec2 } from "./models/edge";
-import { PortalEdge, Cell, CellEdge } from "./models/portal-cells";
+import { edge_calc_normal, closest_ray_intersection, deg_angle_between, edge_length, nearest_point_on_line, dist_vec2_to_Edge } from "./math/intersect";
+import { vec2_clone, vec2_equal } from "./math/vec2";
+import type { Edge, vec2 } from "./models/edge";
+import type { PortalEdge, Cell, CellEdge } from "./models/portal-cells";
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 
@@ -287,4 +288,4 @@ export function buildPortals(edges: Edge[]): Cell[] {
   return cells;
 }
 
-export { context2D }
+export { context2D, PortalEdge };

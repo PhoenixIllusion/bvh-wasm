@@ -25,7 +25,7 @@ const randomLine = (): Edge|undefined => {
     const p0 = randomPoint()
     const p1 = randomPoint()
     if(p0.x != p1.x && p0.y != p0.x) {
-      return {p0: [p0.x,p0.y], p1: [p1.x, p1.y], n: calcNorm(p0, p1)};
+      return {p0: [p0.x,p0.y], p1: [p1.x, p1.y], n: calcNorm(p0, p1),id: -1};
     }
   }
 }

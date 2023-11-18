@@ -1,8 +1,9 @@
 
+import { load_cells } from './math/triangle-hash';
 import { Edge, vec2 } from './models/edge';
-import { cellsToJSON } from './models/json';
+import { PortalCellJson, cellsToJSON } from './models/json';
 import { importSVG } from './svg-parser';
-import { PortalEdge, buildPortals, cell2d, context2D, get_random_color, line2d, selectColor } from './util';
+import { PortalEdge, buildPortals, cell2d, context2D, get_random_color, line2d } from './util';
 
 
 function drawNormal(e: Edge) {

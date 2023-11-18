@@ -1,4 +1,5 @@
 import { Edge, vec2 } from "../models/edge";
+import { vec2_clone } from "./vec2";
 
 export function line_intersects(out: [number, number], p0_x: number, p0_y: number, p1_x: number, p1_y: number,
   p2_x: number, p2_y: number, p3_x: number, p3_y: number, r_out: number[] = []) {
@@ -80,15 +81,6 @@ export function deg_angle_between(a: Edge, b: Edge): number {
   if(ret < -180) return ret + 360;
   return ret;
 }
-const EPSILON = 1e-6;
-
-export function vec2_equal(a: vec2, b: vec2): boolean {
-  return Math.abs(a[0] - b[0]) < EPSILON && Math.abs(a[1] - b[1]) < EPSILON;
-}
-
-export function vec2_average(a: vec2, b: vec2): vec2 {
-  return [(a[0]+b[0])/2, (a[1]+b[1])/2];
-}
 
 export function edge_length(e: Edge) {
   const dx = e.p1[0] - e.p0[0];
@@ -102,15 +94,7 @@ export function edge_calc_normal(a: vec2, b: vec2): vec2 {
   const len = Math.sqrt(dx*dx+dy*dy);
   return [dy/len, -dx/len]
 }
-export function vec2_add(a: vec2, b: vec2): vec2 {
-  return [a[0]+b[0],a[1]+b[1]];
-}
-export function vec2_sub(a: vec2, b: vec2): vec2 {
-  return [a[0]-b[0],a[1]-b[1]];
-}
-export function vec2_clone(a: vec2): vec2 {
-  return [a[0],a[1]];
-}
+
 
 export function nearest_point_on_line(point: vec2, line: Edge): vec2 {
   const res = findNearestPointOnLine(point[0],point[1], line.p0[0], line.p0[1], line.p1[0], line.p1[1])
