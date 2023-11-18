@@ -61,3 +61,51 @@ export function check_b_triangle( x: number, y: number, buffer: Float32Array, i:
 
   return buffer[i++];
 }
+
+export function Barycentric2( A: vec2, B: vec2, C: vec2, P: vec2)
+{
+    const c = vec2_sub(C, A);
+    const b = vec2_sub(B, A);
+    const p = vec2_sub(P, A);
+
+    const cc = vec2_dot(c, c);
+    const bc = vec2_dot(b, c);
+    const pc = vec2_dot(c, p);
+    const bb = vec2_dot(b, b);
+    const pb = vec2_dot(b, p);
+
+    const denom = cc*bb - bc*bc
+    const u = (bb*pc - bc*pb) / denom
+    const v = (cc*pb - bc*pc) / denom
+    
+    return { u,v };
+}
+export function Barycentric3( a: vec2, b: vec2, c: vec2, p: vec2)
+{
+    const v0 = vec2_sub(b, a);
+    const v1 = vec2_sub(c, a);
+    const v2 = vec2_sub(p, a);
+
+    const den = v0[0] * v1[1] - v1[0]*v0[1];
+    const v =  (v2[0]*v1[1] - v1[0]*v2[1])/den;
+    const w =  (v0[0]*v2[1] - v2[0]*v0[1])/den;
+    const u = 1.0 - v - w;
+
+    return { v,w,u };
+}
+export function Barycentric( a: vec2, b: vec2, c: vec2, p0: vec2)
+{
+    const point = { x: p0[0], y: p0[1]};
+    const p = (i: number) => {
+      if(i==0) return {x: a[0], y: a[1]}
+      if(i==1) return {x: b[0], y: b[1]}
+      return {x: c[0], y: c[1]}
+    }
+
+    const invDET = 1./((p(1).y-p(2).y) * (p(0).x-p(2).x) + (p(2).x-p(1).x) * (p(0).y-p(2).y));
+    const v = ((p(1).y-p(2).y) * (point.x-p(2).x) + (p(2).x-p(1).x) * (point.y-p(2).y)) * invDET;
+    const w = ((p(2).y-p(0).y) * (point.x-p(2).x) + (p(0).x-p(2).x) * (point.y-p(2).y)) * invDET;
+    const u = 1.0 - v - w;
+
+    return { v,w,u };
+}
