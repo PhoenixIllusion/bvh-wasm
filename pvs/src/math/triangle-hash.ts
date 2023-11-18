@@ -1,6 +1,6 @@
 import { vec2 } from "../models/edge";
 import { PortalCellJson } from "../models/json";
-import { BarycentricVals, check_b_triangle, triangle_to_barycenteric, wind_order } from "./triangles";
+import { check_b_triangle, triangle_to_barycenteric, wind_order } from "./triangles";
 
 interface CellsDataStruct {
   cells: Float32Array,
@@ -21,25 +21,11 @@ export function load_cells(json: PortalCellJson.JSON): CellsDataStruct {
       const p0 = p(tri[0]);
       const p1 = p(tri[1]);
       const p2 = p(tri[2]);
-      let vals;
-      let tri_idx = triangles.length;
       if(wind_order(p0,p1,p2)) {
         triangle_to_barycenteric(p0, p2, p1, cell_index, triangles);
-        vals = BarycentricVals(p0, p2, p1);
       } else {
         triangle_to_barycenteric(p0, p1, p2, cell_index, triangles);
-        vals = BarycentricVals(p0, p1, p2);
       }
-      const stored = {
-        a: [triangles[tri_idx++],triangles[tri_idx++]],
-        v0: [triangles[tri_idx++],triangles[tri_idx++]],
-        v1: [triangles[tri_idx++],triangles[tri_idx++]],
-        invDenom: triangles[tri_idx++],
-        d00: triangles[tri_idx++],
-        d01: triangles[tri_idx++],
-        d11: triangles[tri_idx++]
-      }
-      console.log(vals);
     });
   });
   return {

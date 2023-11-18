@@ -19,7 +19,7 @@ for(let i=0;i<64;i++) {
 
 const u32 = new Uint32Array(img.data.buffer);
 
-
+const now = performance.now();
 for(let x=0;x<WIDTH;x++) {
   for(let y=0;y<HEIGHT;y++) {
     const offset = x + y*WIDTH;
@@ -29,40 +29,8 @@ for(let x=0;x<WIDTH;x++) {
     }
   }
 }
-
-
-/*
-for(let x=0;x<660;x++) {
-  for(let y=0;y<520;y++) {
-    const offset = x + y*660;
-    json.cells.forEach((cell, i) => {
-      if(i > 0) {
-        //if(x >= cell.min[0] && x <=cell.max[0] && y >=cell.min[1] && y <= cell.max[1])
-        {
-          const point = cell.points;
-          for(let j=0;j<cell.triangles.length;j++) {
-            const tri = cell.triangles[j];
-            const p = (idx: number) => [point[idx*2],point[idx*2+1]] as vec2;
-            const p0 = p(tri[0]);
-            const p1 = p(tri[1]);
-            const p2 = p(tri[2]);
-            let bary: {v: number, u: number} = {v: 0, u: 0};
-            if(wind_order(p0,p1,p2)) {
-              bary = Barycentric(p0,p2,p1, [x-10,y-10]);
-            } else {
-              bary = Barycentric(p0,p1,p2, [x-10,y-10]);
-            }
-            if(bary.u >= 0 && bary.v >= 0 &&  (bary.u + bary.v) < 1) {
-              u32[offset] = colors[i]|0xFF000000;
-              return;
-            }
-          }
-        }
-      }
-    });
-  }
-}
-//*/
+const total = performance.now() - now; 
+console.log('Check All Cells', total); 
 
 context2D.putImageData(img, 0, 0);
 
