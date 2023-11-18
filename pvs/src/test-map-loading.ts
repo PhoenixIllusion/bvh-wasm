@@ -18,18 +18,20 @@ for(let i=0;i<64;i++) {
 }
 
 const u32 = new Uint32Array(img.data.buffer);
-/*
-for(let x=0;x<660;x++) {
-  for(let y=0;y<520;y++) {
-    const offset = x + y*660;
+
+
+for(let x=0;x<WIDTH;x++) {
+  for(let y=0;y<HEIGHT;y++) {
+    const offset = x + y*WIDTH;
     const cell = test_cells(x-10, y-10, cells);
     if(cell >= 0) {
       u32[offset] = colors[cell]|0xFF000000;
     }
   }
 }
-*/
 
+
+/*
 for(let x=0;x<660;x++) {
   for(let y=0;y<520;y++) {
     const offset = x + y*660;
@@ -46,9 +48,9 @@ for(let x=0;x<660;x++) {
             const p2 = p(tri[2]);
             let bary: {v: number, u: number} = {v: 0, u: 0};
             if(wind_order(p0,p1,p2)) {
-              bary = Barycentric2(p0,p2,p1, [x-10,y-10]);
+              bary = Barycentric(p0,p2,p1, [x-10,y-10]);
             } else {
-              bary = Barycentric2(p0,p1,p2, [x-10,y-10]);
+              bary = Barycentric(p0,p1,p2, [x-10,y-10]);
             }
             if(bary.u >= 0 && bary.v >= 0 &&  (bary.u + bary.v) < 1) {
               u32[offset] = colors[i]|0xFF000000;
@@ -60,6 +62,7 @@ for(let x=0;x<660;x++) {
     });
   }
 }
+//*/
 
 context2D.putImageData(img, 0, 0);
 

@@ -1,6 +1,6 @@
 import { vec2 } from "../models/edge";
 import { PortalCellJson } from "../models/json";
-import { check_b_triangle, triangle_to_barycenteric, wind_order } from "./triangles";
+import { BarycentricVals, check_b_triangle, triangle_to_barycenteric, wind_order } from "./triangles";
 
 interface CellsDataStruct {
   cells: Float32Array,
@@ -17,51 +17,31 @@ export function load_cells(json: PortalCellJson.JSON): CellsDataStruct {
     cell_table.push(cell.triangles.length);
     cell_table.push(cell.min[0], cell.min[1], cell.max[0],cell.max[1]);
     cell.triangles.forEach(tri => {
-      const p0: vec2 = [points[tri[0]*2],points[tri[0]*2+1]];
-      const p1: vec2 = [points[tri[1]*2],points[tri[1]*2+1]];
-      const p2: vec2 = [points[tri[2]*2],points[tri[2]*2+1]];
+      const p = (idx: number) => [points[idx*2],points[idx*2+1]] as vec2;
+      const p0 = p(tri[0]);
+      const p1 = p(tri[1]);
+      const p2 = p(tri[2]);
+      let vals;
+      let tri_idx = triangles.length;
       if(wind_order(p0,p1,p2)) {
         triangle_to_barycenteric(p0, p2, p1, cell_index, triangles);
+        vals = BarycentricVals(p0, p2, p1);
       } else {
         triangle_to_barycenteric(p0, p1, p2, cell_index, triangles);
+        vals = BarycentricVals(p0, p1, p2);
       }
+      const stored = {
+        a: [triangles[tri_idx++],triangles[tri_idx++]],
+        v0: [triangles[tri_idx++],triangles[tri_idx++]],
+        v1: [triangles[tri_idx++],triangles[tri_idx++]],
+        invDenom: triangles[tri_idx++],
+        d00: triangles[tri_idx++],
+        d01: triangles[tri_idx++],
+        d11: triangles[tri_idx++]
+      }
+      console.log(vals);
     });
   });
-  /*
-  const CELL_WIDTH = Math.ceil((json.max[0]-json.min[0])/cell_size);
-  const CELL_HEIGHT = Math.ceil((json.max[1]-json.min[1])/cell_size);
-  const bb: BoundingBox = {
-    min: [0,0],
-    max: [0,0]
-  }
-  const grid: number[][][] = [];
-  for(let y=json.min[0];y<json.max[1];y+=CELL_HEIGHT) {
-    const row: number[][] = [];
-    for(let x=json.min[1];x<json.max[0];x+=CELL_WIDTH) {
-      const cell_entries: number[] = [];
-      bb.min = [x,y];
-      bb.max = [x+CELL_WIDTH, y+CELL_HEIGHT];
-      json.cells.forEach((cell, cell_index) => {
-        if(bounding_box_intersect(cell, bb)) {
-          cell_entries.push(cell_index);
-        }
-      });
-      row.push(cell_entries);
-    }
-    grid.push(row);
-  } */
-  const ret = new DataView(new ArrayBuffer(4 * cell_table.length + triangles.length));
-  let b = 0;
-  ret.setUint32(b, cell_table[0]);b+=4;
-  for(let i=1;i< cell_table.length; ) {
-    ret.setUint32(b, cell_table[i++]);b+=4;
-    ret.setUint32(b, cell_table[i++]);b+=4;
-
-    ret.setFloat32(b, cell_table[i++]);b+=4;
-    ret.setFloat32(b, cell_table[i++]);b+=4;
-    ret.setFloat32(b, cell_table[i++]);b+=4;
-    ret.setFloat32(b, cell_table[i++]);b+=4;
-  }
   return {
     cells: new Float32Array(cell_table),
     triangles: new Float32Array(triangles)
